@@ -9,23 +9,25 @@ import {
   Zap
 } from 'lucide-react';
 import { INITIAL_REQUIREMENTS } from '../data/complianceData';
-
-const ANALYSIS_STEPS = [
-  { id: 1, label: "Reading regulations" },
-  { id: 2, label: "Extracting requirements" },
-  { id: 3, label: "Reading company evidence" },
-  { id: 4, label: "Comparing requirements" },
-  { id: 5, label: "Identifying gaps" },
-  { id: 6, label: "Assessing risk" },
-  { id: 7, label: "Generating corrective actions" }
-];
+import { useLanguage } from '../context/LanguageContext';
 
 export default function AnalysisScreen({ onComplete, uploadedData }) {
+  const { t } = useLanguage();
   const [currentStep, setCurrentStep] = useState(0);
   const [isCompleted, setIsCompleted] = useState(false);
   const [apiData, setApiData] = useState(null);
   const [backendStatus, setBackendStatus] = useState("connecting"); // "connected" | "fallback"
   const [analysisDone, setAnalysisDone] = useState(false);
+
+  const analysisSteps = [
+    { id: 1, label: t('readingRegulations') },
+    { id: 2, label: t('extractingRequirements') },
+    { id: 3, label: t('readingEvidence') },
+    { id: 4, label: t('comparingRequirements') },
+    { id: 5, label: t('identifyingGaps') },
+    { id: 6, label: t('assessingRisk') },
+    { id: 7, label: t('generatingActions') }
+  ];
 
   // Helper to generate dynamic results if backend is unreachable
   const getDynamicResult = () => {
@@ -158,19 +160,18 @@ export default function AnalysisScreen({ onComplete, uploadedData }) {
     };
   }, [uploadedData]);
 
-  // 2. Step Progress Animation (Smoothly progresses, holds at step 6 until analysisDone)
+  // 2. Step Progress Animation
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentStep((prev) => {
         if (prev < 5) {
           return prev + 1;
         } else if (prev === 5) {
-          // Hold at step 5/6 until backend response is in
           if (analysisDone) {
             return 6;
           }
           return 5;
-        } else if (prev < ANALYSIS_STEPS.length) {
+        } else if (prev < analysisSteps.length) {
           return prev + 1;
         } else {
           clearInterval(interval);
@@ -181,7 +182,7 @@ export default function AnalysisScreen({ onComplete, uploadedData }) {
     }, 450);
 
     return () => clearInterval(interval);
-  }, [analysisDone]);
+  }, [analysisDone, analysisSteps.length]);
 
   // 3. Complete and Redirect
   useEffect(() => {
@@ -201,12 +202,18 @@ export default function AnalysisScreen({ onComplete, uploadedData }) {
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-1 bg-gradient-to-r from-indigo-500 via-blue-500 to-indigo-600 rounded-full" />
 
         <div className="text-center mb-8">
-          {backendStatus === "connected" && (
+          {backendStatus === "connected" ? (
             <span className="inline-flex items-center gap-1.5 px-3 py-1 mb-3 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              FastAPI RAG + Vector DB Active
+              {t('fastApiActive')}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 mb-3 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+              <Sparkles className="w-3 h-3 text-indigo-500" />
+              {t('localEngineActive')}
             </span>
           )}
+
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-indigo-50 text-indigo-600 mb-4 glow-indigo">
             {isCompleted ? (
               <ShieldCheck className="w-9 h-9 text-emerald-600 transition-all scale-110" />
@@ -216,19 +223,17 @@ export default function AnalysisScreen({ onComplete, uploadedData }) {
           </div>
 
           <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-            {isCompleted ? 'Analysis Complete' : 'Analyzing your compliance data...'}
+            {isCompleted ? t('analysisComplete') : t('analyzingTitle')}
           </h2>
 
           <p className="mt-2 text-xs sm:text-sm text-slate-500">
-            {isCompleted 
-              ? 'Compliance baseline established. Loading your executive overview...'
-              : 'Cross-referencing statutory rules against documented operational evidence.'}
+            {isCompleted ? t('analysisCompleteSubtitle') : t('analyzingSubtitle')}
           </p>
         </div>
 
         {/* 7 Animated Steps */}
         <div className="space-y-3.5 my-8">
-          {ANALYSIS_STEPS.map((step, idx) => {
+          {analysisSteps.map((step, idx) => {
             const isDone = currentStep > idx;
             const isCurrent = currentStep === idx;
 
@@ -260,7 +265,7 @@ export default function AnalysisScreen({ onComplete, uploadedData }) {
                 </div>
 
                 <span className="text-[11px] font-semibold text-slate-400">
-                  {isDone ? '✓' : isCurrent ? 'in progress...' : ''}
+                  {isDone ? '✓' : isCurrent ? '...' : ''}
                 </span>
               </div>
             );
@@ -271,27 +276,19 @@ export default function AnalysisScreen({ onComplete, uploadedData }) {
         <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden mb-6">
           <div 
             className={`h-full transition-all duration-500 ${isCompleted ? 'bg-emerald-500' : 'bg-indigo-600'}`}
-            style={{ width: `${Math.min(100, Math.round((currentStep / ANALYSIS_STEPS.length) * 100))}%` }}
+            style={{ width: `${Math.min(100, Math.round((currentStep / analysisSteps.length) * 100))}%` }}
           />
         </div>
 
-        {/* Completion or Skip */}
+        {/* Completion Notice */}
         <div className="flex justify-center">
-          {isCompleted ? (
+          {isCompleted && (
             <button
-              onClick={onComplete}
-              className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition flex items-center gap-2"
+              onClick={() => onComplete(apiData || getDynamicResult())}
+              className="px-6 py-2.5 rounded-xl bg-slate-900 hover:bg-indigo-600 text-white text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer"
             >
-              <span>Go to Dashboard</span>
+              <span>{t('viewAllRequirements')}</span>
               <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          ) : (
-            <button
-              onClick={onComplete}
-              className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1 transition"
-            >
-              <Zap className="w-3 h-3 text-amber-500" />
-              <span>Skip animation</span>
             </button>
           )}
         </div>

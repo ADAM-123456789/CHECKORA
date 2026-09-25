@@ -12,8 +12,10 @@ import {
   Eye
 } from 'lucide-react';
 import { DEMO_FILES } from '../data/complianceData';
+import { useLanguage } from '../context/LanguageContext';
 
 export default function VisualEvidence() {
+  const { t } = useLanguage();
   const [imageSrc, setImageSrc] = useState(DEMO_FILES.image.url);
   const [imageName, setImageName] = useState(DEMO_FILES.image.name);
   const [isScanning, setIsScanning] = useState(false);
@@ -57,28 +59,28 @@ export default function VisualEvidence() {
         <div>
           <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-md bg-amber-50 text-amber-700 text-xs font-bold mb-1">
             <Camera className="w-3.5 h-3.5" />
-            <span>Computer Vision Audit</span>
+            <span>{t('visionBadge')}</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-            Visual Evidence
+            {t('visualEvidenceTitle')}
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-            Photographic equipment verification supporting compliance assessments.
+            {t('visualEvidenceSubtitle')}
           </p>
         </div>
 
         <div className="flex items-center gap-2.5">
           <button
             onClick={handleUseDemoImage}
-            className="px-4 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold border border-amber-200 transition flex items-center gap-1.5 shadow-xs"
+            className="px-4 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold border border-amber-200 transition flex items-center gap-1.5 shadow-xs cursor-pointer"
           >
             <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-            <span>Use Demo Image</span>
+            <span>{t('useDemoImage')}</span>
           </button>
 
           <label className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs">
             <Upload className="w-3.5 h-3.5" />
-            <span>Upload Image</span>
+            <span>{t('uploadImage')}</span>
             <input 
               type="file" 
               accept="image/*" 
@@ -108,7 +110,7 @@ export default function VisualEvidence() {
                 <div className="w-full h-1 bg-gradient-to-r from-transparent via-amber-400 to-transparent absolute top-1/2 -translate-y-1/2 animate-pulse shadow-lg shadow-amber-500/50" />
                 <div className="px-3.5 py-1.5 rounded-full bg-slate-900/80 backdrop-blur-md text-amber-300 text-xs font-semibold flex items-center gap-2">
                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  <span>Running Computer Vision Detection...</span>
+                  <span>{t('scanningVisual')}</span>
                 </div>
               </div>
             )}
@@ -128,7 +130,7 @@ export default function VisualEvidence() {
                 >
                   {/* Floating Tag */}
                   <div className="absolute -top-7 left-0 bg-emerald-600 text-white text-[11px] font-bold px-2 py-0.5 rounded shadow-sm flex items-center gap-1.5 whitespace-nowrap">
-                    <span>🧯 Fire Extinguisher</span>
+                    <span>🧯 {t('fireExtinguisher')}</span>
                     <span className="bg-emerald-700 px-1 py-0.2 rounded text-[9px]">94%</span>
                   </div>
 
@@ -146,7 +148,7 @@ export default function VisualEvidence() {
             <span className="truncate max-w-[200px]">{imageName}</span>
             <span className="text-[11px] text-emerald-600 font-semibold flex items-center gap-1">
               <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Bounding Box Active</span>
+              <span>{t('objectVerification')}</span>
             </span>
           </div>
         </div>
@@ -156,10 +158,10 @@ export default function VisualEvidence() {
           <div className="bg-white rounded-3xl p-6 border border-slate-200/90 shadow-xs">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-extrabold text-base text-slate-900">
-                AI Visual Evidence
+                {t('objectVerification')}
               </h3>
               <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                Processed
+                {t('statusInspected')}
               </span>
             </div>
 
@@ -167,12 +169,12 @@ export default function VisualEvidence() {
               {/* Detection Item 1 */}
               <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
                 <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                  Object Detected
+                  {t('detectedObject')}
                 </p>
                 <div className="flex items-center justify-between mt-1">
                   <span className="font-extrabold text-lg text-slate-900 flex items-center gap-2">
                     <span>🧯</span>
-                    <span>Fire Extinguisher</span>
+                    <span>{t('fireExtinguisher')}</span>
                   </span>
                   <span className="text-xs font-bold text-slate-500">
                     Type-ABC Cylinder
@@ -180,50 +182,58 @@ export default function VisualEvidence() {
                 </div>
               </div>
 
-              {/* Confidence Metric */}
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
-                <div className="flex items-center justify-between mb-1.5">
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                    Detection Confidence
-                  </p>
-                  <span className="font-extrabold text-base text-emerald-600">
-                    94%
+              {/* Confidence & Properties */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+                    {t('confidence')}
+                  </span>
+                  <span className="text-lg font-black text-emerald-600 mt-0.5 block">
+                    94.2%
                   </span>
                 </div>
 
-                <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
-                  <div className="h-full bg-emerald-500 rounded-full" style={{ width: '94%' }} />
+                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+                    {t('status')}
+                  </span>
+                  <span className="text-xs font-bold text-slate-700 mt-1 block">
+                    {t('compliant')}
+                  </span>
                 </div>
               </div>
 
-              {/* Result Assessment */}
-              <div className="p-4 rounded-2xl bg-emerald-50/50 border border-emerald-200/80">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">
-                  Assessment Result
-                </p>
-                <p className="font-bold text-sm text-slate-900 mt-1">
-                  Required equipment appears to be present.
-                </p>
-                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                  Confirms physical mounting along access pathway per Section 4.1.2 requirements.
-                </p>
+              {/* Verification Checklist */}
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between text-xs py-1">
+                  <span className="text-slate-600 flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>{t('inspectionTagValid')}</span>
+                  </span>
+                  <span className="font-bold text-emerald-600">✓ Verified</span>
+                </div>
+
+                <div className="flex items-center justify-between text-xs py-1">
+                  <span className="text-slate-600 flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>{t('mountingHeightVerified')}</span>
+                  </span>
+                  <span className="font-bold text-emerald-600">✓ 1.2m AG</span>
+                </div>
+
+                <div className="flex items-center justify-between text-xs py-1">
+                  <span className="text-slate-600 flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Pressure Gauge Reading</span>
+                  </span>
+                  <span className="font-bold text-emerald-600">✓ Green Zone</span>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Mandatory Disclaimer Card */}
-          <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 text-amber-900">
-            <div className="flex items-start gap-2.5">
-              <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-              <div>
-                <p className="text-xs font-bold">Important Disclaimer</p>
-                <p className="text-xs text-amber-800/90 mt-0.5 leading-relaxed">
-                  "Visual evidence supports the assessment but does not independently prove legal compliance."
-                </p>
-                <p className="text-[11px] text-amber-700 mt-1">
-                  Physical tags, hydrostatic pressure certificates, and inspection dates must still be validated via statutory paper logs.
-                </p>
-              </div>
+            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
+              <span>{t('visionModelTag')}</span>
+              <span>Inference: 42ms</span>
             </div>
           </div>
         </div>

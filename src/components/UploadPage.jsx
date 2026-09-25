@@ -7,14 +7,16 @@ import {
   CheckCircle, 
   AlertCircle, 
   Sparkles, 
-  ArrowRight,
-  X,
-  FileCheck,
-  Download
+  ArrowRight, 
+  X, 
+  FileCheck, 
+  Download 
 } from 'lucide-react';
 import { DEMO_FILES } from '../data/complianceData';
+import { useLanguage } from '../context/LanguageContext';
 
 export default function UploadPage({ onStartAnalysis, onBackToHome }) {
+  const { t } = useLanguage();
   const [rulesFile, setRulesFile] = useState(null);
   const [reportFile, setReportFile] = useState(null);
   const [imageFile, setImageFile] = useState(null);
@@ -82,10 +84,10 @@ export default function UploadPage({ onStartAnalysis, onBackToHome }) {
       {/* Header */}
       <div className="text-center max-w-2xl mx-auto mb-8">
         <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-          Start a Compliance Check
+          {t('uploadTitle')}
         </h1>
         <p className="mt-2 text-base text-slate-600">
-          Upload your rules and company evidence. Checkora will compare them automatically.
+          {t('uploadSubtitle')}
         </p>
 
         {/* Action Buttons: 1-Click Fill + Download Real Test PDFs */}
@@ -99,7 +101,7 @@ export default function UploadPage({ onStartAnalysis, onBackToHome }) {
             }`}
           >
             <Sparkles className="w-4 h-4 text-indigo-600" />
-            <span>{isDemoLoaded ? '✓ Demo Documents Loaded' : 'Use Demo Documents'}</span>
+            <span>{isDemoLoaded ? t('demoLoaded') : t('useDemoDocuments')}</span>
           </button>
 
           <div className="flex items-center gap-2 text-xs">
@@ -110,7 +112,7 @@ export default function UploadPage({ onStartAnalysis, onBackToHome }) {
               title="Download test regulation PDF"
             >
               <Download className="w-3.5 h-3.5 text-slate-500" />
-              <span>Rules PDF</span>
+              <span>{t('rulesPDF')}</span>
             </a>
 
             <a
@@ -120,7 +122,7 @@ export default function UploadPage({ onStartAnalysis, onBackToHome }) {
               title="Download test company report PDF"
             >
               <Download className="w-3.5 h-3.5 text-slate-500" />
-              <span>Report PDF</span>
+              <span>{t('reportPDF')}</span>
             </a>
           </div>
         </div>
@@ -135,10 +137,10 @@ export default function UploadPage({ onStartAnalysis, onBackToHome }) {
           <div>
             <div className="text-3xl mb-3">📄</div>
             <h3 className="font-bold text-base text-slate-900 mb-1">
-              Rules / Regulation
+              {t('rulesCardTitle')}
             </h3>
             <p className="text-xs text-slate-500 mb-6 leading-relaxed">
-              Upload the document containing the requirements.
+              {t('rulesCardDesc')}
             </p>
           </div>
 
@@ -164,7 +166,7 @@ export default function UploadPage({ onStartAnalysis, onBackToHome }) {
                 </div>
                 <button
                   onClick={() => setRulesFile(null)}
-                  className="text-slate-400 hover:text-slate-600 p-1"
+                  className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -175,7 +177,7 @@ export default function UploadPage({ onStartAnalysis, onBackToHome }) {
                 className="w-full py-3 px-4 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Upload className="w-4 h-4" />
-                <span>Choose PDF</span>
+                <span>{t('uploadFile')}</span>
               </button>
             )}
           </div>
@@ -188,10 +190,10 @@ export default function UploadPage({ onStartAnalysis, onBackToHome }) {
           <div>
             <div className="text-3xl mb-3">📋</div>
             <h3 className="font-bold text-base text-slate-900 mb-1">
-              Company Report
+              {t('reportCardTitle')}
             </h3>
             <p className="text-xs text-slate-500 mb-6 leading-relaxed">
-              Upload inspection reports, checklists, policies or records.
+              {t('reportCardDesc')}
             </p>
           </div>
 
@@ -217,7 +219,7 @@ export default function UploadPage({ onStartAnalysis, onBackToHome }) {
                 </div>
                 <button
                   onClick={() => setReportFile(null)}
-                  className="text-slate-400 hover:text-slate-600 p-1"
+                  className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -228,7 +230,7 @@ export default function UploadPage({ onStartAnalysis, onBackToHome }) {
                 className="w-full py-3 px-4 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Upload className="w-4 h-4" />
-                <span>Choose PDF</span>
+                <span>{t('uploadFile')}</span>
               </button>
             )}
           </div>
@@ -239,12 +241,12 @@ export default function UploadPage({ onStartAnalysis, onBackToHome }) {
           imageFile ? 'border-emerald-300 bg-emerald-50/10' : 'border-slate-200'
         }`}>
           <div>
-            <div className="text-3xl mb-3">📸</div>
+            <div className="text-3xl mb-3">📷</div>
             <h3 className="font-bold text-base text-slate-900 mb-1">
-              Visual Evidence
+              {t('imageCardTitle')}
             </h3>
             <p className="text-xs text-slate-500 mb-6 leading-relaxed">
-              Optional — upload a photo as supporting evidence.
+              {t('imageCardDesc')}
             </p>
           </div>
 
@@ -263,8 +265,8 @@ export default function UploadPage({ onStartAnalysis, onBackToHome }) {
                   {imagePreview ? (
                     <img 
                       src={imagePreview} 
-                      alt="Thumbnail" 
-                      className="w-8 h-8 rounded object-cover border border-slate-200" 
+                      alt="Preview" 
+                      className="w-6 h-6 rounded-md object-cover shrink-0 border border-slate-200" 
                     />
                   ) : (
                     <Camera className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -281,7 +283,7 @@ export default function UploadPage({ onStartAnalysis, onBackToHome }) {
                     setImageFile(null);
                     setImagePreview(null);
                   }}
-                  className="text-slate-400 hover:text-slate-600 p-1"
+                  className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -292,7 +294,7 @@ export default function UploadPage({ onStartAnalysis, onBackToHome }) {
                 className="w-full py-3 px-4 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Upload className="w-4 h-4" />
-                <span>Upload Image</span>
+                <span>{t('uploadImage')}</span>
               </button>
             )}
           </div>
@@ -310,7 +312,7 @@ export default function UploadPage({ onStartAnalysis, onBackToHome }) {
               : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
           }`}
         >
-          <span>Analyze with Checkora</span>
+          <span>{t('analyzeButton')}</span>
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>

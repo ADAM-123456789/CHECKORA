@@ -1,13 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, HelpCircle } from 'lucide-react';
 import { AI_SUGGESTIONS } from '../data/complianceData';
+import { useLanguage } from '../context/LanguageContext';
 
 export default function AiChat({ requirements = [], companyInfo = {} }) {
+  const { t } = useLanguage();
   const [messages, setMessages] = useState([
     {
       id: 'welcome',
       sender: 'ai',
-      text: "Hello! I am Checkora, your AI compliance assistant. Ask me anything about your compliance analysis.",
+      text: t('chatWelcome'),
       timestamp: 'Just now'
     }
   ]);
@@ -71,11 +73,11 @@ export default function AiChat({ requirements = [], companyInfo = {} }) {
       if (matchedSuggestion) {
         aiResponseText = matchedSuggestion.answer;
       } else if (lower.includes('fix first') || lower.includes('priority')) {
-        aiResponseText = "Based on the current analysis, the highest-priority issues are emergency-exit signage, fire-extinguisher inspection, and the missing emergency drill record. These were classified as high risk because the submitted evidence does not demonstrate that the requirements are satisfied.";
+        aiResponseText = `Based on the risk analysis for ${companyInfo?.name || 'the facility'}, the highest-priority issues are emergency-exit signage, fire-extinguisher inspection, and the annual emergency evacuation drill. These require immediate physical remediation.`;
       } else if (lower.includes('emergency exit') || lower.includes('exit signage')) {
-        aiResponseText = "The regulation requires clearly marked emergency exits, but no supporting evidence was found in the uploaded company report. Because this relates to emergency evacuation and safety, Checkora has classified it as high risk.";
+        aiResponseText = "The statutory safety standard requires clearly illuminated, unobstructed emergency exits. The internal audit report lacks verification logs for exit signs, creating critical egress liability.";
       } else {
-        aiResponseText = `Based on the ${companyInfo?.standard || 'Safety Standard 2026'} analysis for ${companyInfo?.name || 'Apex Manufacturing'}, the organization has satisfied ${companyInfo?.complianceScore || 67}% of requirements. The 3 critical high-risk gaps are emergency exit signage, fire extinguisher inspection tags, and the annual emergency evacuation drill.`;
+        aiResponseText = `Based on the ${companyInfo?.standard || 'Safety Standard 2026'} analysis for ${companyInfo?.name || 'the audited facility'}, the organization has satisfied ${companyInfo?.complianceScore || 67}% of requirements. All identified gaps and recommended corrective actions are available in the master register.`;
       }
     }
 
@@ -95,17 +97,17 @@ export default function AiChat({ requirements = [], companyInfo = {} }) {
       {/* Header */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs">
         <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-          Ask Checkora
+          {t('chatTitle')}
         </h1>
         <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-          Ask questions about your compliance analysis.
+          {t('chatSubtitle')}
         </p>
       </div>
 
       {/* Suggested Questions */}
       <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
         <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">
-          Suggested Questions
+          {t('suggestedQuestions')}
         </div>
         <div className="flex flex-wrap gap-2">
           {AI_SUGGESTIONS.map((item) => (
@@ -141,8 +143,10 @@ export default function AiChat({ requirements = [], companyInfo = {} }) {
         })}
 
         {isTyping && (
-          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs text-slate-500 w-fit">
-            AI is thinking...
+          <div className="flex gap-2 p-3 bg-slate-50 rounded-2xl max-w-24 text-slate-400 text-xs">
+            <span className="animate-bounce">•</span>
+            <span className="animate-bounce delay-100">•</span>
+            <span className="animate-bounce delay-200">•</span>
           </div>
         )}
 
@@ -150,34 +154,28 @@ export default function AiChat({ requirements = [], companyInfo = {} }) {
       </div>
 
       {/* Input */}
-      <div className="bg-white rounded-2xl p-2.5 border border-slate-200 shadow-xs flex items-center gap-2">
+      <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-xs flex items-center gap-2">
         <input
           type="text"
-          placeholder="Type your compliance question..."
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') handleSendPrompt(inputValue);
-          }}
-          className="flex-1 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none"
+          onKeyDown={(e) => e.key === 'Enter' && handleSendPrompt(inputValue)}
+          placeholder={t('chatPlaceholder')}
+          className="flex-1 px-3 py-2 text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none"
         />
         <button
-          disabled={!inputValue.trim()}
           onClick={() => handleSendPrompt(inputValue)}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
-            inputValue.trim()
-              ? 'bg-indigo-600 text-white cursor-pointer hover:bg-indigo-700'
-              : 'bg-slate-100 text-slate-300 cursor-not-allowed'
-          }`}
+          disabled={!inputValue.trim()}
+          className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
         >
-          <span>Send</span>
-          <Send className="w-3 h-3" />
+          <Send className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">{t('sendPrompt')}</span>
         </button>
       </div>
 
       {/* Disclaimer */}
-      <p className="text-[11px] text-slate-400 text-center">
-        AI-assisted analysis. Verify findings with the applicable regulation and a qualified compliance professional.
+      <p className="text-[11px] text-slate-400 text-center px-4 leading-relaxed">
+        {t('chatDisclaimer')}
       </p>
     </div>
   );

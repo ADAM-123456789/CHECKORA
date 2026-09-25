@@ -67,7 +67,7 @@ export default function Header({ currentView, onNavigate, onReset, companyName =
             {langOpen && (
               <div className="absolute right-0 top-full mt-1.5 w-44 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50 animate-in fade-in slide-in-from-top-1 duration-150">
                 <div className="px-3 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
-                  Select Language
+                  {t('selectLanguage')}
                 </div>
                 {LANGUAGES.map(language => (
                   <button

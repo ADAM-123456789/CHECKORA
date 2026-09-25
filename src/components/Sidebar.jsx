@@ -6,14 +6,17 @@ import {
   Camera, 
   FileText 
 } from 'lucide-react';
+import { useLanguage } from '../context/LanguageContext';
 
 export default function Sidebar({ currentView, onNavigate, companyName = "Apex Manufacturing Pvt. Ltd." }) {
+  const { t } = useLanguage();
+
   const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'requirements', label: 'All Requirements', icon: ListChecks },
-    { id: 'chat', label: 'Ask Checkora', icon: MessageSquare },
-    { id: 'visual-evidence', label: 'Visual Evidence', icon: Camera },
-    { id: 'report', label: 'Reports', icon: FileText }
+    { id: 'dashboard', label: t('navDashboard'), icon: LayoutDashboard },
+    { id: 'requirements', label: t('navRequirements'), icon: ListChecks },
+    { id: 'chat', label: t('navChat'), icon: MessageSquare },
+    { id: 'visual-evidence', label: t('navVisualEvidence'), icon: Camera },
+    { id: 'report', label: t('navReport'), icon: FileText }
   ];
 
   return (
@@ -21,7 +24,7 @@ export default function Sidebar({ currentView, onNavigate, companyName = "Apex M
       {/* Navigation Links */}
       <div className="p-4 flex-1 space-y-1">
         <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-          Navigation
+          {t('navigation')}
         </div>
 
         {navItems.map((item) => {
@@ -48,7 +51,7 @@ export default function Sidebar({ currentView, onNavigate, companyName = "Apex M
       {/* Footer Demo Company */}
       <div className="p-4 border-t border-slate-100 bg-slate-50/60">
         <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-          Demo Company
+          {t('demoCompany')}
         </div>
         <div className="text-xs font-bold text-slate-800 mt-0.5 truncate">
           {companyName}
