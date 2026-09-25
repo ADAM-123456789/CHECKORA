@@ -1,12 +1,13 @@
 /**
  * Checkora Multilingual Translations
- * Supported Languages: English, Hindi, Tamil, Spanish, French, Arabic
+ * Supported Languages: English, Hindi, Tamil, Malayalam, Spanish, French, Arabic
  */
 
 export const LANGUAGES = [
   { code: 'en', label: 'English', flag: '🇬🇧', dir: 'ltr' },
   { code: 'hi', label: 'हिन्दी', flag: '🇮🇳', dir: 'ltr' },
   { code: 'ta', label: 'தமிழ்', flag: '🇮🇳', dir: 'ltr' },
+  { code: 'ml', label: 'മലയാളം', flag: '🇮🇳', dir: 'ltr' },
   { code: 'es', label: 'Español', flag: '🇪🇸', dir: 'ltr' },
   { code: 'fr', label: 'Français', flag: '🇫🇷', dir: 'ltr' },
   { code: 'ar', label: 'العربية', flag: '🇸🇦', dir: 'rtl' },
@@ -488,6 +489,95 @@ export const TRANSLATIONS = {
     printReport: 'طباعة / حفظ PDF',
     backToDashboard: 'العودة إلى لوحة التحكم',
     generatedBy: 'تم إنشاؤه بواسطة Checkora Compliance Engine',
+  },
+
+  ml: {
+    // Header
+    tagline: 'AI അനുസരണ സഹായി',
+    subtitle: 'നിയമങ്ങൾ → അപകടം → നടപടി',
+    launchDemo: 'ഡെമോ തുടങ്ങുക',
+    complianceReport: 'അനുസരണ റിപ്പോർട്ട്',
+    resetDemo: 'പുനഃസജ്ജമാക്കുക',
+    analysisReady: 'വിശകലനം തയ്യാർ',
+    prototype: 'പ്രോട്ടോടൈപ്പ്',
+
+    // Landing
+    landingTitle: 'നിയമങ്ങളിൽ നിന്ന്',
+    landingTitle2: 'നടപടിയിലേക്ക്',
+    landingSubtitle: 'നിങ്ങളുടെ നിയമ മാനദണ്ഡ PDF-ഉം കമ്പനി ഓഡിറ്റ് റിപ്പോർട്ടും അപ്‌ലോഡ് ചെയ്യൂ. Checkora AI ഓരോ അനുസരണ വിടവും കണ്ടെത്തി ഒരു തിരുത്തൽ പദ്ധതി സ്വയമേ തയ്യാറാക്കും.',
+    startCheck: 'അനുസരണ പരിശോധന തുടങ്ങുക',
+    howItWorks: 'ഇത് എങ്ങനെ പ്രവർത്തിക്കുന്നു',
+    step1: 'രേഖകൾ അപ്‌ലോഡ് ചെയ്യുക',
+    step1desc: 'നിയന്ത്രണ നിലവാര PDF-ഉം കമ്പനി പരിശോധന റിപ്പോർട്ടും അപ്‌ലോഡ് ചെയ്യൂ.',
+    step2: 'AI വിശകലനം',
+    step2desc: 'RAG എഞ്ചിൻ വ്യവസ്ഥകൾ വേർതിരിക്കുകയും തെളിവ് തിരയുകയും അനുസരണം വിലയിരുത്തുകയും ചെയ്യുന്നു.',
+    step3: 'വിടവ്, അപകട റിപ്പോർട്ട്',
+    step3desc: 'ഓരോ വിടവും അനുരൂപം, ഭാഗിക, ഇല്ലാത്തത് എന്നിങ്ങനെ തരംതിരിക്കപ്പെടുന്നു.',
+    step4: 'തിരുത്തൽ നടപടികൾ',
+    step4desc: 'ഓരോ നിയമ ലംഘനത്തിനും വ്യക്തമായ, പ്രായോഗിക തിരുത്തൽ ശുപാർശകൾ.',
+
+    // Upload
+    uploadTitle: 'അനുസരണ പരിശോധന തുടങ്ങുക',
+    uploadSubtitle: 'നിങ്ങളുടെ നിയമങ്ങളും കമ്പനി തെളിവുകളും അപ്‌ലോഡ് ചെയ്യൂ. Checkora സ്വയം താരതമ്യം ചെയ്യും.',
+    useDemoDocuments: 'ഡെമോ രേഖകൾ ഉപയോഗിക്കുക',
+    demoLoaded: '✓ ഡെമോ രേഖകൾ ലോഡ് ചെയ്തു',
+    analyzeButton: 'Checkora ഉപയോഗിച്ച് വിശകലനം ചെയ്യുക',
+    rulesLabel: 'നിയമ മാനദണ്ഡ PDF',
+    reportLabel: 'കമ്പനി ഓഡിറ്റ് / പരിശോധന റിപ്പോർട്ട് PDF',
+    imageLabel: 'ദൃശ്യ ഫോട്ടോഗ്രാഫിക് തെളിവ്',
+    uploadFile: 'ഫയൽ അപ്‌ലോഡ് ചെയ്യുക',
+    uploadImage: 'ചിത്രം അപ്‌ലോഡ് ചെയ്യുക',
+
+    // Analysis
+    analyzingTitle: 'നിങ്ങളുടെ അനുസരണ ഡാറ്റ വിശകലനം ചെയ്യുന്നു...',
+    analyzingSubtitle: 'രേഖാമൂലം തെളിവുകളുമായി നിയമ ചട്ടങ്ങൾ താരതമ്യം ചെയ്യുന്നു.',
+    analysisComplete: 'വിശകലനം പൂർത്തിയായി',
+    analysisCompleteSubtitle: 'അനുസരണ അടിസ്ഥാനരേഖ സ്ഥാപിതമായി. നിങ്ങളുടെ ഡാഷ്‌ബോർഡ് ലോഡ് ചെയ്യുന്നു...',
+    readingRegulations: 'നിയന്ത്രണങ്ങൾ വായിക്കുന്നു',
+    extractingRequirements: 'ആവശ്യകതകൾ വേർതിരിക്കുന്നു',
+    readingEvidence: 'കമ്പനി തെളിവ് വായിക്കുന്നു',
+    comparingRequirements: 'ആവശ്യകതകൾ താരതമ്യം ചെയ്യുന്നു',
+    identifyingGaps: 'വിടവുകൾ കണ്ടെത്തുന്നു',
+    assessingRisk: 'അപകടം വിലയിരുത്തുന്നു',
+    generatingActions: 'തിരുത്തൽ നടപടികൾ തയ്യാറാക്കുന്നു',
+
+    // Dashboard
+    dashboardTitle: 'എക്സിക്യൂട്ടീവ് അനുസരണ ഡാഷ്‌ബോർഡ്',
+    complianceScore: 'അനുസരണ സ്കോർ',
+    totalRequirements: 'ആകെ ആവശ്യകതകൾ',
+    compliant: 'അനുരൂപം',
+    partial: 'ഭാഗിക',
+    missing: 'ഇല്ലാത്തത്',
+    highRisk: 'ഉയർന്ന അപകടം',
+    mediumRisk: 'മധ്യ അപകടം',
+    lowRisk: 'കുറഞ്ഞ അപകടം',
+    priorityIssues: 'മുൻഗണനാ പ്രശ്നങ്ങൾ',
+    viewAllRequirements: 'എല്ലാ ആവശ്യകതകളും കാണുക',
+
+    // Gap Analysis
+    requirement: 'ആവശ്യകത',
+    evidenceFound: 'കണ്ടെത്തിയ തെളിവ്',
+    whyProblem: 'ഇത് ഒരു പ്രശ്നം എന്തുകൊണ്ട്',
+    recommendedAction: 'ശുപാർശ ചെയ്ത നടപടി',
+    markResolved: 'പരിഹരിച്ചതായി അടയാളപ്പെടുത്തുക',
+    markUnresolved: 'പരിഹരിക്കാത്തതായി അടയാളപ്പെടുത്തുക',
+    resolved: 'പരിഹരിച്ചു',
+    clause: 'ഖണ്ഡിക',
+    riskLevel: 'അപകട നില',
+    status: 'അവസ്ഥ',
+
+    // Chat
+    chatTitle: 'Checkora-യോട് ചോദിക്കുക',
+    chatSubtitle: 'നിങ്ങളുടെ അനുസരണ വിശകലനത്തെ കുറിച്ച് ചോദ്യങ്ങൾ ചോദിക്കൂ.',
+    chatPlaceholder: 'നിങ്ങളുടെ അനുസരണ വിശകലനത്തെ കുറിച്ച് ചോദിക്കൂ...',
+    suggestedQuestions: 'നിർദ്ദേശിക്കപ്പെട്ട ചോദ്യങ്ങൾ',
+    chatWelcome: 'നമസ്കാരം! ഞാൻ Checkora, നിങ്ങളുടെ AI അനുസരണ സഹായി. നിങ്ങളുടെ അനുസരണ വിശകലനത്തെ കുറിച്ച് ഏതും ചോദിക്കൂ.',
+
+    // Report
+    reportTitle: 'എക്സിക്യൂട്ടീവ് അനുസരണ റിപ്പോർട്ട്',
+    printReport: 'പ്രിന്റ് / PDF സേവ് ചെയ്യുക',
+    backToDashboard: 'ഡാഷ്‌ബോർഡിലേക്ക് മടങ്ങുക',
+    generatedBy: 'Checkora Compliance Engine ഉണ്ടാക്കിയത്',
   },
 };
 
