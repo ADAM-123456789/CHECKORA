@@ -210,7 +210,7 @@ export default function VisualEvidence() {
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                     <span>{t('inspectionTagValid')}</span>
                   </span>
-                  <span className="font-bold text-emerald-600">✓ Verified</span>
+                  <span className="font-bold text-emerald-600">✓ {t('compliant')}</span>
                 </div>
 
                 <div className="flex items-center justify-between text-xs py-1">
@@ -224,16 +224,16 @@ export default function VisualEvidence() {
                 <div className="flex items-center justify-between text-xs py-1">
                   <span className="text-slate-600 flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span>Pressure Gauge Reading</span>
+                    <span>{t('rulesCardTitle')}</span>
                   </span>
-                  <span className="font-bold text-emerald-600">✓ Green Zone</span>
+                  <span className="font-bold text-emerald-600">✓ {t('compliant')}</span>
                 </div>
               </div>
             </div>
 
             <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
               <span>{t('visionModelTag')}</span>
-              <span>Inference: 42ms</span>
+              <span>42ms</span>
             </div>
           </div>
         </div>

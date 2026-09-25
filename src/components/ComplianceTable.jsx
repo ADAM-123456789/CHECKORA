@@ -209,7 +209,7 @@ export default function ComplianceTable({
                       {/* Chevron Action */}
                       <td className="py-4 px-4 text-right whitespace-nowrap">
                         <div className="inline-flex items-center gap-1 text-xs font-bold text-slate-400 group-hover:text-indigo-600 transition-colors">
-                          <span className="hidden sm:inline">Details</span>
+                          <span className="hidden sm:inline">{t('viewGapAnalysis')}</span>
                           <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
                         </div>
                       </td>

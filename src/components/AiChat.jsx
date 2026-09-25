@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, HelpCircle } from 'lucide-react';
-import { AI_SUGGESTIONS } from '../data/complianceData';
+import { Send } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
+import { getLocalizedAiSuggestions } from '../data/localizedRequirements';
 
 export default function AiChat({ requirements = [], companyInfo = {} }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
+  const localizedSuggestions = getLocalizedAiSuggestions(lang);
+
   const [messages, setMessages] = useState([
     {
       id: 'welcome',
@@ -17,6 +19,23 @@ export default function AiChat({ requirements = [], companyInfo = {} }) {
   const [isTyping, setIsTyping] = useState(false);
 
   const messagesEndRef = useRef(null);
+
+  // Sync welcome greeting whenever user changes language
+  useEffect(() => {
+    setMessages(prev => {
+      if (prev.length === 1 && prev[0].id === 'welcome') {
+        return [
+          {
+            id: 'welcome',
+            sender: 'ai',
+            text: t('chatWelcome'),
+            timestamp: 'Just now'
+          }
+        ];
+      }
+      return prev;
+    });
+  }, [lang, t]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -41,55 +60,65 @@ export default function AiChat({ requirements = [], companyInfo = {} }) {
     setIsTyping(true);
 
     let aiResponseText = "";
-    try {
-      const response = await fetch('http://localhost:8000/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: promptText,
-          requirements: requirements,
-          companyInfo: companyInfo
-        })
-      });
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.reply) {
-          aiResponseText = data.reply;
+    // 1. First check if it matches any localized suggestion in current language
+    const lower = promptText.toLowerCase().trim();
+    const matchedSuggestion = localizedSuggestions.find(s => 
+      s.question.toLowerCase().trim() === lower ||
+      lower.includes(s.question.toLowerCase().replace(/[?؟]/g, '').trim()) ||
+      s.question.toLowerCase().replace(/[?؟]/g, '').trim().includes(lower)
+    );
+
+    if (matchedSuggestion) {
+      aiResponseText = matchedSuggestion.answer;
+    } else {
+      // 2. Try FastAPI backend if running
+      try {
+        const response = await fetch('http://localhost:8000/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: promptText,
+            requirements: requirements,
+            companyInfo: companyInfo
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.reply) {
+            aiResponseText = data.reply;
+          }
         }
+      } catch (err) {
+        // Fallback to local localized intelligence
       }
-    } catch (err) {
-      console.warn("FastAPI chat unavailable, using local intelligence engine:", err);
     }
 
-    // Fallback if backend didn't provide a reply
+    // 3. Fallback to localized summary or priority answer
     if (!aiResponseText) {
-      const lower = promptText.toLowerCase();
-      const matchedSuggestion = AI_SUGGESTIONS.find(s => 
-        lower.includes(s.question.toLowerCase().replace('?', '')) ||
-        s.question.toLowerCase().includes(lower.replace('?', ''))
-      );
-
-      if (matchedSuggestion) {
-        aiResponseText = matchedSuggestion.answer;
-      } else if (lower.includes('fix first') || lower.includes('priority')) {
-        aiResponseText = `Based on the risk analysis for ${companyInfo?.name || 'the facility'}, the highest-priority issues are emergency-exit signage, fire-extinguisher inspection, and the annual emergency evacuation drill. These require immediate physical remediation.`;
-      } else if (lower.includes('emergency exit') || lower.includes('exit signage')) {
-        aiResponseText = "The statutory safety standard requires clearly illuminated, unobstructed emergency exits. The internal audit report lacks verification logs for exit signs, creating critical egress liability.";
+      if (lower.includes('fix') || lower.includes('priority') || lower.includes('first') || lower.includes('पहले') || lower.includes('முதலில்') || lower.includes('ആദ്യം') || lower.includes('primero') || lower.includes('premier') || lower.includes('أولاً')) {
+        aiResponseText = localizedSuggestions[1]?.answer || localizedSuggestions[0]?.answer;
+      } else if (lower.includes('high') || lower.includes('risk') || lower.includes('जोखिम') || lower.includes('ஆபத்து') || lower.includes('അപകട') || lower.includes('riesgo') || lower.includes('risque') || lower.includes('خطورة')) {
+        aiResponseText = localizedSuggestions[0]?.answer;
+      } else if (lower.includes('missing') || lower.includes('गायब') || lower.includes('விடுபட்ட') || lower.includes('ഇല്ലാത്ത') || lower.includes('ausentes') || lower.includes('manquantes') || lower.includes('مفقودة')) {
+        aiResponseText = localizedSuggestions[3]?.answer;
       } else {
-        aiResponseText = `Based on the ${companyInfo?.standard || 'Safety Standard 2026'} analysis for ${companyInfo?.name || 'the audited facility'}, the organization has satisfied ${companyInfo?.complianceScore || 67}% of requirements. All identified gaps and recommended corrective actions are available in the master register.`;
+        aiResponseText = localizedSuggestions[4]?.answer || localizedSuggestions[0]?.answer;
       }
     }
 
-    const aiMsg = {
-      id: (Date.now() + 1).toString(),
-      sender: 'ai',
-      text: aiResponseText,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
+    setTimeout(() => {
+      const aiMsg = {
+        id: (Date.now() + 1).toString(),
+        sender: 'ai',
+        text: aiResponseText,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
 
-    setMessages(prev => [...prev, aiMsg]);
-    setIsTyping(false);
+      setMessages(prev => [...prev, aiMsg]);
+      setIsTyping(false);
+    }, 350);
   };
 
   return (
@@ -110,7 +139,7 @@ export default function AiChat({ requirements = [], companyInfo = {} }) {
           {t('suggestedQuestions')}
         </div>
         <div className="flex flex-wrap gap-2">
-          {AI_SUGGESTIONS.map((item) => (
+          {localizedSuggestions.map((item) => (
             <button
               key={item.id}
               onClick={() => handleSendPrompt(item.question)}
