@@ -85,7 +85,9 @@ def analyze_demo():
         results = run_full_rag_analysis(
             regulations_pdf_source=str(reg_path),
             audit_pdf_source=str(audit_path),
-            gemini_api_key=os.getenv("GEMINI_API_KEY")
+            gemini_api_key=os.getenv("GEMINI_API_KEY"),
+            rules_filename="Industrial_Workplace_Safety_Standard_2026.pdf",
+            audit_filename="Apex_Manufacturing_Internal_Inspection_Report_Q1_2026.pdf"
         )
         return {
             "success": True,
@@ -118,7 +120,9 @@ async def analyze_documents(
         results = run_full_rag_analysis(
             regulations_pdf_source=rules_stream,
             audit_pdf_source=report_stream,
-            gemini_api_key=os.getenv("GEMINI_API_KEY")
+            gemini_api_key=os.getenv("GEMINI_API_KEY"),
+            rules_filename=rules_file.filename or "",
+            audit_filename=report_file.filename or ""
         )
 
         return {

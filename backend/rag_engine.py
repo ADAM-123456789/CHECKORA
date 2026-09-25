@@ -2,17 +2,21 @@
 Checkora RAG & Vector Retrieval Engine
 Parses statutory safety standards & internal company audit reports,
 chunks and embeds text into a Vector Store, retrieves relevant evidence
-for each compliance clause, and evaluates gaps & risk using Google Gemini.
+for each compliance clause, and evaluates gaps & risk dynamically.
 """
 
 import os
 import re
 import math
 import logging
+import warnings
 from typing import List, Dict, Any, Optional
 import pypdf
 
-import warnings
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("CheckoraRAG")
+
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 # Try importing Google GenAI SDKs
@@ -37,13 +41,55 @@ HAS_GENAI = HAS_NEW_GENAI or HAS_OLD_GENAI
 def extract_pdf_text_by_pages(pdf_source) -> List[Dict[str, Any]]:
     """
     Extracts text page-by-page from a file path or file-like object / bytes.
-    Returns list of dicts: [{"page": 1, "text": "..."}]
+    Includes robust fallback for PDFs with non-standard font encodings or hex streams.
     """
     pages = []
     try:
         reader = pypdf.PdfReader(pdf_source)
         for i, page in enumerate(reader.pages):
-            text = page.extract_text() or ""
+            text = ""
+            try:
+                text = page.extract_text() or ""
+            except Exception as pe:
+                logger.warning(f"pypdf extract_text exception on page {i+1}: {pe}. Trying stream recovery.")
+
+            # If extract_text returned empty or crashed, recover text from stream
+            if not text.strip():
+                try:
+                    contents = page.get_contents()
+                    if contents:
+                        if isinstance(contents, list):
+                            stream_bytes = b"".join([c.get_data() for c in contents if hasattr(c, 'get_data')])
+                        elif hasattr(contents, 'get_data'):
+                            stream_bytes = contents.get_data()
+                        else:
+                            stream_bytes = b""
+
+                        raw_str = stream_bytes.decode('latin-1', errors='ignore')
+
+                        # 1. Recover hex strings <HEX> Tj
+                        hex_matches = re.findall(r'<([0-9a-fA-F]+)>\s*Tj', raw_str)
+                        # 2. Recover literal strings (TEXT) Tj
+                        literal_matches = re.findall(r'\((.*?)\)\s*Tj', raw_str)
+
+                        recovered = []
+                        for h in hex_matches:
+                            try:
+                                s = bytes.fromhex(h).decode('latin-1', errors='ignore').encode('ascii', 'ignore').decode().strip()
+                                if s:
+                                    recovered.append(s)
+                            except Exception:
+                                pass
+                        for lit in literal_matches:
+                            s = lit.encode('ascii', 'ignore').decode().strip()
+                            if s:
+                                recovered.append(s)
+
+                        if recovered:
+                            text = "\n".join(recovered)
+                except Exception as se:
+                    logger.error(f"Stream recovery failed on page {i+1}: {se}")
+
             pages.append({
                 "page": i + 1,
                 "text": text.strip()
@@ -54,42 +100,27 @@ def extract_pdf_text_by_pages(pdf_source) -> List[Dict[str, Any]]:
     return pages
 
 
-def parse_clauses_from_regulations(pages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def parse_clauses_from_regulations(pages: List[Dict[str, Any]], filename: str = "") -> List[Dict[str, Any]]:
     """
     Parses statutory standard pages into discrete compliance clauses.
-    Detects patterns like 'Section X.Y.Z - Title' or numbered requirements.
+    Supports Section X.Y.Z, Clause X, Article X, numbered rules, and paragraph chunking.
     """
     full_text = "\n\n".join([f"--- PAGE {p['page']} ---\n{p['text']}" for p in pages])
     clauses = []
 
-    # Regex pattern matching 'Section X.Y.Z - Title'
-    pattern = re.compile(
-        r"(?:Section\s+)?(\d+\.\d+\.\d+)\s*[-–:]\s*([^\n\r]+?)(?:\s*\((?:MANDATORY[^\)]*|ADVISORY[^\)]*)\))?[\r\n]+((?:(?!Section|\d+\.\d+\.\d+|\b[1-9]\.\s+[A-Z\s]{4,}|--- PAGE).)+)",
+    # Pattern 1: 'Section X.Y.Z - Title' or 'Section X.Y: Title'
+    pattern_section = re.compile(
+        r"(?:Section\s+)?(\d+\.\d+(?:\.\d+)?)\s*[-–:]\s*([^\n\r]+?)(?:\s*\((?:MANDATORY[^\)]*|ADVISORY[^\)]*|CRITICAL[^\)]*)\))?[\r\n]+((?:(?!Section|\d+\.\d+(?:\.\d+)?|\b[1-9]\.\s+[A-Z\s]{4,}|--- PAGE).)+)",
         re.DOTALL | re.IGNORECASE
     )
 
-    matches = list(pattern.finditer(full_text))
-    if matches:
+    matches = list(pattern_section.finditer(full_text))
+    if matches and len(matches) >= 3:
         for idx, m in enumerate(matches):
             clause_num = m.group(1).strip()
             title = m.group(2).strip()
             req_text = " ".join(m.group(3).split()).strip()
-
-            # Determine category based on clause number or title
-            category = "General Safety"
-            lower_title = (title + " " + req_text).lower()
-            if "fire" in lower_title or "suppression" in lower_title or "extinguisher" in lower_title:
-                category = "Fire Safety"
-            elif "egress" in lower_title or "exit" in lower_title or "evacuation" in lower_title or "muster" in lower_title or "drill" in lower_title:
-                category = "Evacuation & Egress"
-            elif "protective equipment" in lower_title or "ppe" in lower_title or "respiratory" in lower_title or "training" in lower_title or "first aid" in lower_title:
-                category = "Occupational Health"
-            elif "machine" in lower_title or "interlock" in lower_title or "guard" in lower_title or "e-stop" in lower_title or "crane" in lower_title:
-                category = "Machine Safety"
-            elif "hazardous" in lower_title or "chemical" in lower_title or "spill" in lower_title or "sds" in lower_title:
-                category = "Hazardous Materials"
-            elif "leadership" in lower_title or "officer" in lower_title or "noise" in lower_title:
-                category = "Health & Administration"
+            category = categorize_clause(title, req_text)
 
             clauses.append({
                 "id": f"req-{idx + 1}",
@@ -98,26 +129,98 @@ def parse_clauses_from_regulations(pages: List[Dict[str, Any]]) -> List[Dict[str
                 "clause": f"Section {clause_num} - {title}",
                 "title": title,
                 "category": category,
-                "requirement": req_text,
+                "requirement": req_text[:400] if len(req_text) > 400 else req_text,
                 "raw_text": f"Section {clause_num} - {title}: {req_text}"
             })
 
-    # Fallback if standard format doesn't match
-    if not clauses:
-        paragraphs = [p.strip() for p in full_text.split("\n\n") if len(p.strip()) > 40 and not p.startswith("--- PAGE")]
-        for idx, para in enumerate(paragraphs[:15]):
+    # Pattern 2: 'Article X' or 'Clause X' or 'Requirement X' or 'Rule X'
+    if len(clauses) < 3:
+        pattern_art = re.compile(
+            r"(?:Clause|Article|Rule|Standard|Requirement)\s*([0-9A-Za-z\.-]+)\s*[-–:]\s*([^\n\r]+)[\r\n]+((?:(?!Clause|Article|Rule|Standard|Requirement|--- PAGE).)+)",
+            re.DOTALL | re.IGNORECASE
+        )
+        art_matches = list(pattern_art.finditer(full_text))
+        if art_matches and len(art_matches) >= 2:
+            clauses = []
+            for idx, m in enumerate(art_matches):
+                code = m.group(1).strip()
+                title = m.group(2).strip()
+                req_text = " ".join(m.group(3).split()).strip()
+                category = categorize_clause(title, req_text)
+                clauses.append({
+                    "id": f"req-{idx + 1}",
+                    "number": idx + 1,
+                    "clause_code": f"Clause {code}",
+                    "clause": f"Clause {code} - {title}",
+                    "title": title,
+                    "category": category,
+                    "requirement": req_text[:400] if len(req_text) > 400 else req_text,
+                    "raw_text": f"Clause {code} - {title}: {req_text}"
+                })
+
+    # Pattern 3: Numbered items (e.g. "1. Fire Safety Management: ...", "2. Ventilation: ...")
+    if len(clauses) < 3:
+        pattern_numbered = re.compile(
+            r"(?:^|\n)(\d+)\.\s+([A-Z][^\n\r:]{3,60})[:\s]+((?:(?!\n\d+\.\s+[A-Z]|--- PAGE).)+)",
+            re.DOTALL
+        )
+        num_matches = list(pattern_numbered.finditer(full_text))
+        if num_matches and len(num_matches) >= 3:
+            clauses = []
+            for idx, m in enumerate(num_matches):
+                num = m.group(1).strip()
+                title = m.group(2).strip()
+                req_text = " ".join(m.group(3).split()).strip()
+                category = categorize_clause(title, req_text)
+                clauses.append({
+                    "id": f"req-{idx + 1}",
+                    "number": idx + 1,
+                    "clause_code": f"Item {num}",
+                    "clause": f"Standard Mandate {num} - {title}",
+                    "title": title,
+                    "category": category,
+                    "requirement": req_text[:400] if len(req_text) > 400 else req_text,
+                    "raw_text": f"Mandate {num} - {title}: {req_text}"
+                })
+
+    # Fallback Pattern 4: Paragraph headings
+    if len(clauses) < 3:
+        lines = [line.strip() for page in pages for line in page["text"].split("\n") if len(line.strip()) > 30]
+        step = max(1, len(lines) // 10)
+        selected_lines = lines[::step][:12]
+        clauses = []
+        for idx, line in enumerate(selected_lines):
+            title = line[:50].strip() + ("..." if len(line) > 50 else "")
+            category = categorize_clause(title, line)
             clauses.append({
                 "id": f"req-{idx + 1}",
                 "number": idx + 1,
-                "clause_code": f"Clause {idx + 1}",
-                "clause": f"Standard Requirement {idx + 1}",
-                "title": para[:40].strip() + "...",
-                "category": "General Safety",
-                "requirement": para,
-                "raw_text": para
+                "clause_code": f"Requirement {idx + 1}",
+                "clause": f"Section {idx + 1}.0 - {title}",
+                "title": title,
+                "category": category,
+                "requirement": line,
+                "raw_text": line
             })
 
     return clauses
+
+
+def categorize_clause(title: str, text: str) -> str:
+    combined = (title + " " + text).lower()
+    if any(k in combined for k in ["fire", "suppression", "extinguisher", "sprinkler", "alarm"]):
+        return "Fire Safety"
+    elif any(k in combined for k in ["egress", "exit", "evacuation", "muster", "drill", "signage"]):
+        return "Evacuation & Egress"
+    elif any(k in combined for k in ["ppe", "protective", "respiratory", "mask", "footwear", "helmet"]):
+        return "Occupational Health"
+    elif any(k in combined for k in ["machine", "guard", "interlock", "e-stop", "crane", "forklift", "gear"]):
+        return "Machine Safety"
+    elif any(k in combined for k in ["chemical", "sds", "hazardous", "spill", "waste", "corrosive", "toxic"]):
+        return "Hazardous Materials"
+    elif any(k in combined for k in ["training", "officer", "induction", "leadership", "ehs", "first aid", "audit"]):
+        return "Health & Governance"
+    return "Operational Safety"
 
 
 def chunk_audit_evidence(pages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -130,11 +233,11 @@ def chunk_audit_evidence(pages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         page_num = p["page"]
         text = p["text"]
 
-        # Split on numbered findings, bullet points, or double newlines
-        parts = re.split(r"\n(?=\d+\.\s+[A-Z]|\bSection\b|\bFinding\b|\bTable\b|\bObservation\b)", text)
+        # Split on numbered findings, sections, tables, or blank lines
+        parts = re.split(r"\n(?=\d+\.\s+[A-Z]|\bSection\b|\bFinding\b|\bTable\b|\bObservation\b|\bCheck\b|\bAudit Item\b)", text)
         for part in parts:
             clean = " ".join(part.split()).strip()
-            if len(clean) > 30:
+            if len(clean) > 25:
                 chunks.append({
                     "id": f"ev-{chunk_id}",
                     "page": page_num,
@@ -143,7 +246,7 @@ def chunk_audit_evidence(pages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 })
                 chunk_id += 1
 
-    # Fallback: if very few chunks, chunk by sentence windows
+    # Fallback if too few chunks
     if len(chunks) < 3 and pages:
         all_text = " ".join([p["text"] for p in pages])
         sentences = re.split(r"(?<=[.!?])\s+", all_text)
@@ -152,7 +255,7 @@ def chunk_audit_evidence(pages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         for s in sentences:
             current.append(s)
             current_len += len(s)
-            if current_len >= 300:
+            if current_len >= 250:
                 chunks.append({
                     "id": f"ev-{chunk_id}",
                     "page": 1,
@@ -189,11 +292,16 @@ class VectorStore:
 
         if gemini_api_key and HAS_GENAI:
             try:
-                genai.configure(api_key=gemini_api_key)
-                self.use_gemini_embeddings = True
-                logger.info("VectorStore: Configured with Google Gemini Embeddings.")
+                if HAS_NEW_GENAI:
+                    self.client = genai.Client(api_key=gemini_api_key)
+                    self.use_gemini_embeddings = True
+                    logger.info("VectorStore: Configured with Google GenAI SDK.")
+                elif HAS_OLD_GENAI:
+                    old_genai.configure(api_key=gemini_api_key)
+                    self.use_gemini_embeddings = True
+                    logger.info("VectorStore: Configured with Google Generative AI.")
             except Exception as e:
-                logger.warning(f"Could not initialize Gemini embeddings: {e}. Falling back to internal vector store.")
+                logger.warning(f"Could not initialize Gemini embeddings: {e}. Using internal vector store.")
 
     def _tokenize(self, text: str) -> List[str]:
         return re.findall(r"\b[a-zA-Z0-9_-]{2,}\b", text.lower())
@@ -223,7 +331,6 @@ class VectorStore:
                 if t in self._vocab:
                     idx = self._vocab[t]
                     vec[idx] = (count / len(tokens)) * self._idf[t]
-            # normalize
             norm = math.sqrt(sum(x * x for x in vec)) or 1.0
             vectors.append([x / norm for x in vec])
         self.embeddings = vectors
@@ -231,49 +338,12 @@ class VectorStore:
     def index_evidence(self, evidence_chunks: List[Dict[str, Any]]):
         self.documents = evidence_chunks
         texts = [doc["text"] for doc in evidence_chunks]
-
-        if self.use_gemini_embeddings:
-            try:
-                result = genai.embed_content(
-                    model="models/text-embedding-004",
-                    content=texts,
-                    task_type="retrieval_document"
-                )
-                self.embeddings = result['embedding']
-                return
-            except Exception as e:
-                logger.warning(f"Gemini batch embedding failed: {e}. Using TF-IDF vector embeddings.")
-
         self._compute_tf_idf_vectors(texts)
 
     def search(self, query: str, top_k: int = 3) -> List[Dict[str, Any]]:
-        """
-        Retrieves top_k most semantically relevant evidence chunks for a query.
-        """
         if not self.documents:
             return []
 
-        if self.use_gemini_embeddings:
-            try:
-                q_emb = genai.embed_content(
-                    model="models/text-embedding-004",
-                    content=query,
-                    task_type="retrieval_query"
-                )['embedding']
-
-                def cosine_sim(v1, v2):
-                    dot = sum(a * b for a, b in zip(v1, v2))
-                    m1 = math.sqrt(sum(a * a for a in v1)) or 1.0
-                    m2 = math.sqrt(sum(b * b for b in v2)) or 1.0
-                    return dot / (m1 * m2)
-
-                scores = [(cosine_sim(q_emb, doc_emb), doc) for doc_emb, doc in zip(self.embeddings, self.documents)]
-                scores.sort(key=lambda x: x[0], reverse=True)
-                return [s[1] for s in scores[:top_k]]
-            except Exception as e:
-                logger.warning(f"Gemini query embedding failed: {e}. Falling back to internal vector search.")
-
-        # TF-IDF cosine search
         q_tokens = self._tokenize(query)
         if not q_tokens or not self._vocab:
             return self.documents[:top_k]
@@ -297,202 +367,191 @@ class VectorStore:
         return [s[1] for s in scores[:top_k]]
 
 
-def evaluate_clause_with_gemini(
-    clause: Dict[str, Any],
-    evidence_chunks: List[Dict[str, Any]],
-    gemini_api_key: str
-) -> Dict[str, Any]:
+def evaluate_clause_dynamically(clause: Dict[str, Any], evidence_chunks: List[Dict[str, Any]], gemini_api_key: Optional[str] = None) -> Dict[str, Any]:
     """
-    Evaluates compliance gap and risk using Google Gemini.
+    Evaluates compliance gap, risk, and corrective action for a clause.
+    Uses Google Gemini if key available, or smart semantic heuristic analysis of actual text.
     """
-    evidence_context = "\n\n".join([f"[{e.get('citation', 'Evidence')}]: {e['text']}" for e in evidence_chunks])
+    # 1. Try Gemini LLM if key is present
+    if gemini_api_key and HAS_GENAI:
+        try:
+            evidence_context = "\n\n".join([f"[{e.get('citation', 'Evidence')}]: {e['text']}" for e in evidence_chunks])
+            prompt = f"""
+You are Checkora, an expert AI Compliance Auditor. Evaluate this statutory clause against the company audit evidence.
 
-    prompt = f"""
-You are Checkora, an expert AI Industrial Compliance and Safety Auditor.
-Evaluate the statutory requirement against the company internal audit evidence provided below.
+STATUTORY CLAUSE:
+{clause['clause']}
+Requirement: {clause['requirement']}
 
-STATUTORY REQUIREMENT:
-Clause: {clause['clause']}
-Requirement Text: {clause['requirement']}
+RETRIEVED AUDIT EVIDENCE:
+{evidence_context if evidence_context else "No direct evidence found."}
 
-COMPANY AUDIT EVIDENCE FOUND VIA VECTOR RETRIEVAL:
-{evidence_context if evidence_context else "No relevant evidence located in the uploaded report."}
+Evaluate:
+1. status: "Compliant" | "Partial" | "Missing"
+2. risk: "High" | "Medium" | "Low"
+3. evidenceFound: What the report mentions (or state if missing)
+4. whyProblem: Operational hazard or violation (or "N/A - Fully satisfies..." if compliant)
+5. recommendedAction: Concrete corrective steps
 
-Task:
-Determine whether the company is Compliant, Partial, or Missing regarding this clause.
-Classify risk level: High, Medium, or Low.
-Provide concise explanations:
-1. Status: Exactly one of ["Compliant", "Partial", "Missing"]
-2. Risk: Exactly one of ["High", "Medium", "Low"] (Missing life-safety clauses are High risk, minor lapses Medium, compliant Low)
-3. EvidenceFound: Exactly what internal evidence mentions or why it's missing (cite page if present)
-4. WhyProblem: Operational/legal/life-safety reason why this gap is dangerous or non-compliant (or "N/A - Fully satisfies..." if Compliant)
-5. RecommendedAction: Specific, actionable, vendor-ready corrective steps.
-
-Respond strictly in valid JSON matching this schema:
-{{
-  "status": "Compliant" | "Partial" | "Missing",
-  "risk": "High" | "Medium" | "Low",
-  "evidenceFound": "...",
-  "whyProblem": "...",
-  "recommendedAction": "..."
-}}
+Respond strictly in valid JSON:
+{{"status": "Compliant|Partial|Missing", "risk": "High|Medium|Low", "evidenceFound": "...", "whyProblem": "...", "recommendedAction": "..."}}
 """
-    try:
-        genai.configure(api_key=gemini_api_key)
-        model = genai.GenerativeModel(
-            model_name="gemini-2.5-flash",
-            generation_config={"response_mime_type": "application/json"}
-        )
-        response = model.generate_content(prompt)
-        import json
-        res_json = json.loads(response.text)
-        return res_json
-    except Exception as e:
-        logger.error(f"Gemini evaluation error for clause {clause.get('clause_code')}: {e}")
-        return fallback_evaluate_clause(clause, evidence_chunks)
+            if HAS_NEW_GENAI:
+                client = genai.Client(api_key=gemini_api_key)
+                resp = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=prompt,
+                    config={"response_mime_type": "application/json"}
+                )
+                import json
+                return json.loads(resp.text)
+            elif HAS_OLD_GENAI:
+                old_genai.configure(api_key=gemini_api_key)
+                m = old_genai.GenerativeModel("gemini-2.5-flash", generation_config={"response_mime_type": "application/json"})
+                resp = m.generate_content(prompt)
+                import json
+                return json.loads(resp.text)
+        except Exception as e:
+            logger.warning(f"Gemini call failed: {e}. Running dynamic semantic evaluator.")
 
+    # 2. Dynamic Semantic Heuristic Evaluator (Inspects real evidence content)
+    combined_ev = " ".join([e["text"] for e in evidence_chunks]).lower() if evidence_chunks else ""
+    req_words = set(re.findall(r"\b[a-zA-Z]{4,}\b", clause["requirement"].lower()))
+    title_words = set(re.findall(r"\b[a-zA-Z]{4,}\b", clause["title"].lower()))
+    target_terms = (req_words | title_words) - {"shall", "must", "with", "from", "that", "this", "under", "each", "every", "standard", "clause", "requirement"}
 
-def fallback_evaluate_clause(clause: Dict[str, Any], evidence_chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """
-    Intelligent heuristic evaluation for offline / keyless operation.
-    Accurately scores compliance based on evidence content & negative indicators.
-    """
-    combined_ev = " ".join([e["text"] for e in evidence_chunks]).lower()
-    req_lower = clause["requirement"].lower()
-    title_lower = clause["title"].lower()
+    # Calculate evidence overlap
+    overlap_matches = [t for t in target_terms if t in combined_ev]
+    overlap_ratio = len(overlap_matches) / max(len(target_terms), 1)
 
-    # Specific clause mappings matching standard safety audits
-    if "extinguisher" in title_lower and "tag" in title_lower or "4.1.8" in clause.get("clause_code", ""):
-        return {
-            "status": "Missing",
-            "risk": "High",
-            "evidenceFound": "Report mentions extinguisher tags dated August 2025. Last recorded inspection took place more than 7 months ago. No Q1 2026 recertification record was provided.",
-            "whyProblem": "Last formal inspection was more than 6 months ago. Expired pressure checks elevate the risk of equipment failure during active fire emergencies.",
-            "recommendedAction": "Immediately schedule an emergency re-certification inspection with an authorized fire suppression vendor and update all physical tag logs."
-        }
-    elif "egress" in title_lower or "exit" in title_lower or "3.2.1" in clause.get("clause_code", ""):
-        return {
-            "status": "Missing",
-            "risk": "High",
-            "evidenceFound": "No supporting evidence was found in the uploaded company report. Walkthrough notes do not mention lighted signage or emergency power circuits.",
-            "whyProblem": "The submitted evidence does not demonstrate that emergency exits have the required signage. During a power blackout or smoke-filled evacuation, unlit exits cause bottlenecks and casualties.",
-            "recommendedAction": "Install clearly visible illuminated emergency-exit signs at all designated exits and verify emergency backup battery circuits during the next safety inspection."
-        }
-    elif "drill" in title_lower or "exercise" in title_lower or "3.5.1" in clause.get("clause_code", ""):
-        return {
-            "status": "Missing",
-            "risk": "High",
-            "evidenceFound": "HR drill register shows the last whole-facility evacuation exercise occurred in October 2024. Over 17 months have elapsed without a full simulation.",
-            "whyProblem": "Exceeds statutory 12-month limit by over 5 months. Untrained personnel and untested evacuation wardens create lethal stampede risks in real emergencies.",
-            "recommendedAction": "Mandate and coordinate an unannounced whole-plant evacuation drill before the end of the current month with third-party observer timing."
-        }
-    elif "eyewash" in title_lower or "shower" in title_lower or "4.4.2" in clause.get("clause_code", ""):
-        return {
-            "status": "Missing",
-            "risk": "Medium",
-            "evidenceFound": "Chemical storage bay features eyewash station plumbed to cold water, but water line pressure gauge reads zero and flow test log is blank for Q1 2026.",
-            "whyProblem": "Inoperable eyewash stations prevent immediate chemical decontamination, risking permanent blindness and irreversible caustic chemical burns to operators.",
-            "recommendedAction": "Restore water supply to chemical bay eyewash station immediately and institute daily flush-and-tag verification logs."
-        }
-    elif "interlock" in title_lower or "guard" in title_lower or "5.2.1" in clause.get("clause_code", ""):
-        return {
-            "status": "Partial",
-            "risk": "Medium",
-            "evidenceFound": "Stamping Press Line 2 interlock sensor bypassed with override key during high-output shifts to accelerate cycle times. Lines 1 and 3 operational.",
-            "whyProblem": "Bypassing safety interlocks circumvents physical machine guards, exposing press operators to severe amputation and crushing injuries.",
-            "recommendedAction": "Remove interlock bypass key, discipline unauthorized override protocols, and install tamper-proof keyed interlocks with supervisor lockout."
-        }
-    elif "ppe" in title_lower or "2.1.5" in clause.get("clause_code", ""):
-        return {
-            "status": "Partial",
-            "risk": "Low",
-            "evidenceFound": "All floor workers observed wearing certified hard hats and steel-toe boots. Respiratory fit tests completed for 74 of 88 fabrication workers.",
-            "whyProblem": "14 fabrication workers lack current quantitative respirator fit certificates while working in particulate-heavy grinding bays.",
-            "recommendedAction": "Schedule medical fit-testing for remaining 14 personnel with occupational health clinic by end of week."
-        }
-    elif "first aid" in title_lower or "6.4.0" in clause.get("clause_code", ""):
-        return {
-            "status": "Partial",
-            "risk": "Low",
-            "evidenceFound": "Four first-aid stations verified across Bays A-D. Three certified responders on shift. Burn dressing inventory in Station 2 depleted.",
-            "whyProblem": "Depleted burn dressings impair immediate first-responder care in high-temperature welding and cutting environments.",
-            "recommendedAction": "Restock burn kit consumables across all first-aid kits and assign weekly stock check to shift safety marshal."
-        }
-    elif "chemical" in title_lower or "sds" in title_lower or "8.2.0" in clause.get("clause_code", ""):
-        return {
-            "status": "Partial",
-            "risk": "Medium",
-            "evidenceFound": "Physical SDS binders present at chemical dispensary. 4 new degreaser solvents lack updated GHS 2026 chemical safety data sheets.",
-            "whyProblem": "Missing chemical data sheets prevent proper first-aid and hazmat response in accidental splash or inhalation incidents.",
-            "recommendedAction": "Request updated GHS-compliant SDS from chemical supplier and insert into physical and digital hazard binders."
-        }
-    elif "extinguisher" in title_lower or "4.1.2" in clause.get("clause_code", ""):
-        return {
-            "status": "Compliant",
-            "risk": "Low",
-            "evidenceFound": "Plant floor audit records 14 Type-ABC fire extinguishers distributed across Shop Floors A & B at 18-meter intervals with clear unobstructed access.",
-            "whyProblem": "N/A - Fully satisfies the spatial and type requirements specified in Section 4.1.2.",
-            "recommendedAction": "Maintain quarterly physical checks and ensure tamper seals remain intact."
-        }
-    elif "training" in title_lower or "6.1.0" in clause.get("clause_code", ""):
-        return {
-            "status": "Compliant",
-            "risk": "Low",
-            "evidenceFound": "Training matrix in Appendix C confirms 88 of 88 floor operators completed the 2026 Safety Refresher Modules with documented test scores.",
-            "whyProblem": "N/A - Full workforce certification documented with verifiable attendance sheets.",
-            "recommendedAction": "Continue annual refresher cadence and integrate the upcoming Q3 automated machinery module."
-        }
-    elif "leadership" in title_lower or "ehs" in title_lower or "1.3.0" in clause.get("clause_code", ""):
-        return {
-            "status": "Compliant",
-            "risk": "Low",
-            "evidenceFound": "Certified EHS Director appointed with direct executive board reporting. Monthly executive safety review meetings documented.",
-            "whyProblem": "N/A - Full regulatory adherence with executive accountability structure.",
-            "recommendedAction": "Maintain quarterly executive safety reviews and safety committee meeting minutes."
-        }
-    elif "floor diagram" in title_lower or "assembly" in title_lower or "3.1.4" in clause.get("clause_code", ""):
-        return {
-            "status": "Compliant",
-            "risk": "Low",
-            "evidenceFound": "Laminated egress maps mounted at all 6 primary stairwells and muster point banners clearly demarcated in south parking area.",
-            "whyProblem": "N/A - Clear evacuation signage and floor diagrams meet visibility criteria.",
-            "recommendedAction": "Update diagrams immediately upon completion of planned Q3 warehouse mezzanine expansion."
-        }
+    # Negative compliance indicators in evidence
+    negative_patterns = [
+        "not found", "no evidence", "missing", "expired", "overdue", "over 6 months", "over 12 months",
+        "non-compliant", "failed", "breach", "hazard", "lacking", "deficiency", "overridden", "bypassed",
+        "depleted", "damaged", "uninspected", "delayed", "absent", "incomplete", "outdated", "discrepancy",
+        "violation", "not conducted", "zero pressure", "blank", "untested"
+    ]
+    detected_negatives = [neg for neg in negative_patterns if neg in combined_ev]
 
-    # General heuristic based on keyword presence
-    if not combined_ev or "no supporting evidence" in combined_ev:
-        return {
-            "status": "Missing",
-            "risk": "High",
-            "evidenceFound": "No supporting evidence found in the uploaded company internal audit report.",
-            "whyProblem": "Absence of documented compliance records constitutes a presumptive statutory violation during official safety audits.",
-            "recommendedAction": "Conduct immediate physical audit and establish formal compliance documentation."
-        }
-    elif any(neg in combined_ev for neg in ["expired", "overdue", "bypassed", "depleted", "lacking", "fail"]):
-        return {
-            "status": "Partial",
-            "risk": "Medium",
-            "evidenceFound": f"Partial compliance noted in audit findings: {evidence_chunks[0]['text'][:160]}...",
-            "whyProblem": "Deficiencies identified in operational records pose ongoing compliance liability.",
-            "recommendedAction": "Rectify highlighted operational gaps and update compliance records."
-        }
+    # Positive compliance indicators in evidence
+    positive_patterns = [
+        "compliant", "verified", "certified", "conducted", "tested", "passed", "in order", "up to date",
+        "adequate", "approved", "completed", "installed", "functional", "inspected", "100%", "satisfactory",
+        "on file", "adheres", "mounted", "documented"
+    ]
+    detected_positives = [pos for pos in positive_patterns if pos in combined_ev]
+
+    # Critical life-safety categories get High risk if missing/failed
+    is_life_safety = any(k in clause["category"].lower() or k in clause["title"].lower() 
+                         for k in ["fire", "egress", "exit", "evacuation", "drill", "toxic", "chemical", "interlock", "fall"])
+
+    # Determination
+    if not combined_ev or len(overlap_matches) == 0 or "no supporting evidence" in combined_ev or "no evidence found" in combined_ev:
+        status = "Missing"
+        risk = "High" if is_life_safety else "Medium"
+        evidence_snippet = "No supporting evidence or inspection records were located in the uploaded report for this mandate."
+        why_problem = f"The uploaded audit report does not demonstrate that {clause['title']} is satisfied. Unverified compliance creates regulatory liability."
+        action = f"Conduct an immediate physical inspection, establish verification logs, and verify compliance with {clause['clause']}."
+
+    elif detected_negatives:
+        # If there are explicit negative indicators, it is Partial or Missing
+        if any(severe in detected_negatives for severe in ["expired", "failed", "bypassed", "overdue", "over 12 months", "over 6 months", "zero pressure"]):
+            status = "Missing"
+            risk = "High" if is_life_safety else "Medium"
+        else:
+            status = "Partial"
+            risk = "Medium" if is_life_safety else "Low"
+
+        # Quote the best matching evidence
+        best_chunk = evidence_chunks[0]["text"] if evidence_chunks else ""
+        evidence_snippet = f"Audit findings identify non-conformities: {best_chunk[:180]}..."
+        why_problem = f"Identified operational deficiencies ({', '.join(detected_negatives[:2])}) in {clause['title']} elevate hazard risk during plant operations."
+        action = f"Immediately remediate highlighted gaps for {clause['title']} and schedule formal recertification."
+
+    elif detected_positives and overlap_ratio >= 0.2:
+        status = "Compliant"
+        risk = "Low"
+        best_chunk = evidence_chunks[0]["text"] if evidence_chunks else ""
+        evidence_snippet = f"Documented in internal report: {best_chunk[:180]}..."
+        why_problem = f"N/A - Operational evidence satisfies the mandates of {clause['clause']}."
+        action = f"Maintain regular periodic inspections and keep maintenance logs current for {clause['title']}."
+
     else:
-        return {
-            "status": "Compliant",
-            "risk": "Low",
-            "evidenceFound": f"Satisfactory operational documentation found: {evidence_chunks[0]['text'][:160]}...",
-            "whyProblem": "N/A - Operational evidence satisfies statutory mandates.",
-            "recommendedAction": "Maintain current standard operating procedures and monitoring cadence."
-        }
+        # Partial match
+        status = "Partial"
+        risk = "Medium"
+        best_chunk = evidence_chunks[0]["text"] if evidence_chunks else ""
+        evidence_snippet = f"General operational records found, but explicit verification is incomplete: {best_chunk[:160]}..."
+        why_problem = f"Documentation only partially substantiates the requirement for {clause['title']}."
+        action = f"Review operational logs and document explicit verification for {clause['title']}."
+
+    return {
+        "status": status,
+        "risk": risk,
+        "evidenceFound": evidence_snippet,
+        "whyProblem": why_problem,
+        "recommendedAction": action
+    }
+
+
+def extract_metadata_from_pages(reg_pages: List[Dict[str, Any]], audit_pages: List[Dict[str, Any]], rules_name: str = "", audit_name: str = "") -> Dict[str, str]:
+    """
+    Extracts dynamic company name, standard title, and audit date from PDF texts.
+    """
+    # 1. Standard Title
+    standard_title = "Statutory Compliance Standard"
+    if reg_pages and reg_pages[0]["text"]:
+        first_lines = [l.strip() for l in reg_pages[0]["text"].split("\n") if len(l.strip()) > 8]
+        for line in first_lines[:5]:
+            if any(k in line.lower() for k in ["standard", "regulation", "act", "safety", "code", "osha", "iso"]):
+                standard_title = line
+                break
+    if standard_title == "Statutory Compliance Standard" and rules_name:
+        clean = rules_name.replace(".pdf", "").replace("_", " ").title()
+        if len(clean) > 4:
+            standard_title = clean
+
+    # 2. Company Name
+    company_name = "Enterprise Operations Facility"
+    if audit_pages and audit_pages[0]["text"]:
+        p1 = audit_pages[0]["text"]
+        m = re.search(r"(?:FACILITY|COMPANY|ORGANIZATION|PLANT|AUDIT OF)[:\s]+([^\n\r\|•\d]{3,50})", p1, re.IGNORECASE)
+        if m:
+            company_name = m.group(1).strip()
+        else:
+            m2 = re.search(r"([A-Z][A-Za-z0-9\s&.,]{2,40}(?:Pvt\.? Ltd\.?|Ltd\.?|Inc\.?|Corp\.?|LLC|Corporation|Enterprises|Manufacturing|Industries|Plant))", p1)
+            if m2:
+                company_name = m2.group(1).strip()
+
+    if (company_name == "Enterprise Operations Facility" or "Apex" in company_name) and audit_name and "apex" not in audit_name.lower():
+        clean = audit_name.replace(".pdf", "").replace("_", " ").replace("Report", "").replace("Audit", "").strip().title()
+        if len(clean) > 3:
+            company_name = clean
+
+    # 3. Audit Date
+    audit_date = "Current Quarter"
+    if audit_pages and audit_pages[0]["text"]:
+        m_date = re.search(r"(?:AUDIT DATE|DATE)[:\s]+([A-Za-z0-9,\s]{4,25})", audit_pages[0]["text"], re.IGNORECASE)
+        if m_date:
+            audit_date = m_date.group(1).strip()
+
+    return {
+        "standard": standard_title,
+        "company": company_name,
+        "auditDate": audit_date
+    }
 
 
 def run_full_rag_analysis(
     regulations_pdf_source,
     audit_pdf_source,
-    gemini_api_key: Optional[str] = None
+    gemini_api_key: Optional[str] = None,
+    rules_filename: str = "",
+    audit_filename: str = ""
 ) -> Dict[str, Any]:
     """
     Orchestrates the complete RAG + Vector DB compliance analysis.
+    Produces genuinely dynamic, accurate results for ANY uploaded PDF.
     """
     logger.info("Starting RAG Compliance Pipeline...")
 
@@ -501,33 +560,32 @@ def run_full_rag_analysis(
     audit_pages = extract_pdf_text_by_pages(audit_pdf_source)
     logger.info(f"Extracted {len(reg_pages)} regulation pages and {len(audit_pages)} audit pages.")
 
-    # Step 2: Parse clauses and evidence chunks
-    clauses = parse_clauses_from_regulations(reg_pages)
+    # Step 2: Extract real metadata (Title, Company, Date)
+    meta = extract_metadata_from_pages(reg_pages, audit_pages, rules_filename, audit_filename)
+
+    # Step 3: Parse clauses and evidence chunks
+    clauses = parse_clauses_from_regulations(reg_pages, rules_filename)
     evidence_chunks = chunk_audit_evidence(audit_pages)
     logger.info(f"Parsed {len(clauses)} statutory clauses and {len(evidence_chunks)} evidence chunks.")
 
-    # Step 3: Index evidence in Vector Store
+    # Step 4: Index evidence in Vector Store
     api_key = gemini_api_key or os.getenv("GEMINI_API_KEY", "").strip() or None
     vector_store = VectorStore(gemini_api_key=api_key)
     vector_store.index_evidence(evidence_chunks)
     logger.info("Indexed evidence in vector database.")
 
-    # Step 4: Evaluate each clause against retrieved evidence
+    # Step 5: Evaluate each clause against retrieved evidence
     evaluated_requirements = []
     for idx, c in enumerate(clauses):
-        # Semantic retrieval
+        # Semantic search
         retrieved_evidence = vector_store.search(c["raw_text"], top_k=3)
 
-        # Gap & Risk Analysis
-        if api_key and HAS_GENAI:
-            eval_result = evaluate_clause_with_gemini(c, retrieved_evidence, api_key)
-        else:
-            eval_result = fallback_evaluate_clause(c, retrieved_evidence)
+        # Dynamic evaluation
+        eval_result = evaluate_clause_dynamically(c, retrieved_evidence, api_key)
 
         status = eval_result.get("status", "Partial")
         risk = eval_result.get("risk", "Medium")
 
-        # Normalize status & risk
         if status not in ["Compliant", "Partial", "Missing"]:
             status = "Partial"
         if risk not in ["High", "Medium", "Low"]:
@@ -549,16 +607,17 @@ def run_full_rag_analysis(
             "resolved": False
         })
 
-    # Sort priority ranks
+    # Priority ranking
     evaluated_requirements.sort(key=lambda r: (
         0 if r["risk"] == "High" and r["status"] == "Missing" else
         1 if r["risk"] == "High" else
-        2 if r["risk"] == "Medium" else 3
+        2 if r["risk"] == "Medium" and r["status"] == "Missing" else
+        3 if r["risk"] == "Medium" else 4
     ))
     for rank_idx, req in enumerate(evaluated_requirements):
         req["priorityRank"] = rank_idx + 1
 
-    # Re-sort by original clause number for table display
+    # Restore natural order by number
     evaluated_requirements.sort(key=lambda r: r["number"])
 
     # Calculate statistics
@@ -571,15 +630,19 @@ def run_full_rag_analysis(
     med_risk = sum(1 for r in evaluated_requirements if r["risk"] == "Medium")
     low_risk = sum(1 for r in evaluated_requirements if r["risk"] == "Low")
 
-    score = int(round((compliant_count + 0.5 * partial_count) / (total or 1) * 100))
+    # Precise dynamic score formula
+    if total > 0:
+        score = int(round((compliant_count * 100 + partial_count * 50) / total))
+    else:
+        score = 50
 
     company_info = {
-        "name": "Apex Manufacturing Pvt. Ltd.",
-        "standard": "Industrial Workplace Safety Standard 2026",
-        "auditDate": "March 2026",
-        "facilityType": "Heavy Mechanical & Fabrication Facility",
-        "location": "Plant 4 - Industrial Corridor",
-        "leadAuditor": "Checkora RAG Engine (FastAPI + Chroma/Vector + Gemini)",
+        "name": meta["company"],
+        "standard": meta["standard"],
+        "auditDate": meta["auditDate"],
+        "facilityType": "Industrial Operating Facility",
+        "location": "Operational Site",
+        "leadAuditor": "Checkora RAG Engine (FastAPI + Vector Store)",
         "complianceScore": score,
         "totalRequirements": total,
         "summary": {
@@ -591,6 +654,8 @@ def run_full_rag_analysis(
             "lowRisk": low_risk
         }
     }
+
+    logger.info(f"Completed RAG analysis: {score}% score across {total} clauses.")
 
     return {
         "companyInfo": company_info,
@@ -610,17 +675,13 @@ def answer_rag_chat(
     RAG-powered conversational assistant for compliance queries.
     """
     lower_q = question.lower()
-
-    # If Gemini API key is available, use generative answering with full compliance context
     api_key = gemini_api_key or os.getenv("GEMINI_API_KEY", "").strip() or None
+
     if api_key and HAS_GENAI:
         try:
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel("gemini-2.5-flash")
-
             context_summary = f"""
-Company: {company_info.get('name', 'Apex Manufacturing')}
-Standard: {company_info.get('standard', 'Industrial Workplace Safety Standard 2026')}
+Company: {company_info.get('name', 'Company')}
+Standard: {company_info.get('standard', 'Safety Standard')}
 Compliance Score: {company_info.get('complianceScore', 67)}%
 Summary: {company_info.get('summary', {})}
 
@@ -631,35 +692,53 @@ Key Requirements & Findings:
 
             prompt = f"""
 You are Checkora, an AI Compliance Auditor Assistant.
-Answer the user's compliance question concisely, authoritatively, and professionally based on the following verified compliance audit data:
-
+Answer the user's question concisely based on this verified audit data:
 {context_summary}
 
 User Question: {question}
-
-Keep your answer focused, highlight statutory clauses and risks where appropriate, and suggest practical corrective actions.
 """
-            resp = model.generate_content(prompt)
-            if resp.text:
-                return resp.text.strip()
+            if HAS_NEW_GENAI:
+                client = genai.Client(api_key=api_key)
+                resp = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
+                if resp.text:
+                    return resp.text.strip()
+            elif HAS_OLD_GENAI:
+                old_genai.configure(api_key=api_key)
+                m = old_genai.GenerativeModel("gemini-2.5-flash")
+                resp = m.generate_content(prompt)
+                if resp.text:
+                    return resp.text.strip()
         except Exception as e:
-            logger.error(f"Gemini chat error: {e}")
+            logger.warning(f"Gemini chat failed: {e}")
 
-    # Fallback contextual response synthesizer
+    # Dynamic Contextual Fallback
+    comp_name = company_info.get('name', 'the organization')
+    std_name = company_info.get('standard', 'the standard')
+    score = company_info.get('complianceScore', 0)
+    summ = company_info.get('summary', {})
+
     if "high risk" in lower_q or "critical" in lower_q:
         high_risk_items = [r for r in active_requirements if r.get("risk") == "High"]
-        names = ", ".join([f"{r['title']} ({r['clause']})" for r in high_risk_items])
-        return f"Based on our vector retrieval analysis, there are {len(high_risk_items)} High-Risk compliance gaps: {names}. These pose severe life-safety or legal shutdown liabilities and must be remediated immediately."
+        if high_risk_items:
+            names = ", ".join([f"{r['title']} ({r['clause']})" for r in high_risk_items[:4]])
+            return f"Based on our vector retrieval analysis for {comp_name}, there are {len(high_risk_items)} High-Risk compliance gaps: {names}. These create severe life-safety and regulatory shutdown liabilities."
+        return f"Good news! Currently, there are no High-Risk liabilities identified in {comp_name}'s audit report."
+
     elif "fix first" in lower_q or "priority" in lower_q:
         urgent = sorted(active_requirements, key=lambda x: x.get("priorityRank", 99))[:3]
-        bullet_list = "\n".join([f"• Priority {i+1}: {r['title']} - {r['recommendedAction']}" for i, r in enumerate(urgent)])
-        return f"Checkora's Risk Priority Matrix recommends addressing these top issues first:\n\n{bullet_list}"
+        if urgent:
+            bullet_list = "\n".join([f"• Priority {i+1}: {r['title']} — {r['recommendedAction']}" for i, r in enumerate(urgent)])
+            return f"Checkora's Risk Priority Matrix recommends addressing these top issues first for {comp_name}:\n\n{bullet_list}"
+        return "All identified compliance mandates appear to be in satisfactory standing."
+
     elif "missing" in lower_q:
         missing = [r for r in active_requirements if r.get("status") == "Missing"]
-        return f"There are currently {len(missing)} requirements with missing evidence in the internal audit report: {', '.join([r['title'] for r in missing])}."
+        if missing:
+            return f"There are currently {len(missing)} requirements with missing evidence in the internal audit report: {', '.join([r['title'] for r in missing[:5]])}."
+        return "There are no missing requirements detected in the submitted audit report."
+
     elif "score" in lower_q or "summary" in lower_q:
-        score = company_info.get("complianceScore", 67)
-        summ = company_info.get("summary", {})
-        return f"Overall Compliance Score is {score}%. Status breakdown: {summ.get('compliant', 0)} Compliant, {summ.get('partial', 0)} Partial, and {summ.get('missing', 0)} Missing. There are {summ.get('highRisk', 0)} High-Risk liabilities requiring immediate intervention."
+        return f"Overall Compliance Score for {comp_name} is {score}%. Status breakdown: {summ.get('compliant', 0)} Compliant, {summ.get('partial', 0)} Partial, and {summ.get('missing', 0)} Missing. There are {summ.get('highRisk', 0)} High-Risk liabilities requiring immediate attention."
+
     else:
-        return f"Based on the {company_info.get('standard', 'Safety Standard 2026')} audit for {company_info.get('name', 'Apex Manufacturing')}, the organization satisfies {company_info.get('complianceScore', 67)}% of statutory mandates. The highest priority items are emergency exit signage, expired extinguisher inspection tags, and conducting the annual evacuation drill."
+        return f"Based on the {std_name} audit for {comp_name}, the organization satisfies {score}% of statutory mandates. Priority corrective items are logged in your compliance dashboard."
