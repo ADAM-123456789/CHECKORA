@@ -85,35 +85,33 @@ Both files can be uploaded via the UI or downloaded directly through the Upload 
 
 ### Prerequisites
 - [Node.js](https://nodejs.org/) (version 18 or newer)
-- npm (version 9 or newer)
+- Python (version 3.10 to 3.14) & pip
 
-### Installation
+### Installation & Run
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/<your-username>/checkora.git
-   cd checkora
-   ```
-
-2. **Install dependencies**:
+1. **Install Frontend Dependencies**:
    ```bash
    npm install
    ```
 
-3. **Start the development server**:
+2. **Install Python Backend Dependencies**:
    ```bash
-   npm run dev
-   ```
-   Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-4. **Or run the production preview**:
-   ```bash
-   npm run build
-   npm run preview
+   pip install -r backend/requirements.txt
    ```
 
-### ⚡ Quick Windows Launcher
-On Windows, you can simply double-click **`run_demo.bat`** in the root folder to start the application and automatically open your browser.
+3. **(Optional) Configure Google Gemini API Key**:
+   Create or edit `backend/.env`:
+   ```bash
+   GEMINI_API_KEY=your_free_gemini_api_key_here
+   ```
+   *(Note: The system includes an intelligent offline compliance & vector retrieval fallback that works out-of-the-box even without an API key!)*
+
+4. **Launch Everything with 1-Click (Windows)**:
+   Double-click **`run_demo.bat`** or run:
+   ```bash
+   start.cmd
+   ```
+   This automatically launches the FastAPI RAG backend on port 8000 and the React dashboard on `http://localhost:3000`.
 
 ---
 
@@ -122,11 +120,11 @@ On Windows, you can simply double-click **`run_demo.bat`** in the root folder to
 To demonstrate the full capability in under 60 seconds:
 
 1. **Landing Page**: View the 4-step pipeline and click **"Start Compliance Check"**.
-2. **Upload Documents**: Click **"Use Demo Documents"** to populate the test files, then click **"Analyze with Checkora"**.
-3. **Analysis Screen**: Watch the 7-step analysis checklist complete sequentially.
-4. **Dashboard**: Highlight the **67% Compliance Score**, the 3 status cards, and the **Risk Summary**.
+2. **Upload Documents**: Click **"Use Demo Documents"** (or upload your custom PDF standards and company audits), then click **"Analyze with Checkora"**.
+3. **Analysis Screen**: Watch the 7-step RAG analysis checklist complete sequentially (reading PDFs -> chunking clauses -> vector embedding -> semantic matching -> LLM risk evaluation).
+4. **Dashboard**: Highlight the **Executive Compliance Score**, status cards, and the **Risk Summary**.
 5. **Gap Deep-Dive**: Click **"Emergency Exit Signage"** to showcase the full *Rule → Evidence → Gap → Risk → Action* pipeline. Click **"Mark as Resolved"** to show real-time score updates.
-6. **Ask Checkora**: Navigate to **Ask Checkora** and click *"What should we fix first?"* to demonstrate AI reasoning.
+6. **Ask Checkora**: Navigate to **Ask Checkora** and query the live RAG assistant (*"What should we fix first?"*, *"What are our high-risk issues?"*).
 7. **Visual Evidence**: Open **Visual Evidence** and click **"Use Demo Image"** to showcase AI camera detection.
 8. **Compliance Report**: Click **"Generate Compliance Report"** to show the executive report with print-to-PDF capability.
 
@@ -134,10 +132,13 @@ To demonstrate the full capability in under 60 seconds:
 
 ## 🛠️ Tech Stack
 
-- **Frontend**: React 18, Vite 6, Tailwind CSS 3
-- **Icons**: Lucide React
+- **Frontend**: React 18, Vite 6, Tailwind CSS 3, Lucide Icons
+- **Backend**: Python 3.14, FastAPI, Uvicorn, Python-Multipart
+- **Document Ingestion**: PyPDF page & clause chunker
+- **Vector Search**: Semantic Vector Store (Embeddings & Cosine Similarity)
+- **AI & Reasoning**: Google Gemini API (`models/text-embedding-004`, `gemini-2.5-flash`), with offline heuristic engine fallback.
 - **Document Generation**: pdf-lib
-- **Architecture**: Decoupled component design with modular AI reasoning engine, ready for Google Gemini API integration.
+- **Architecture**: Decoupled full-stack architecture matching enterprise AI compliance systems.
 
 ---
 

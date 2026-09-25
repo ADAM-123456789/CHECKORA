@@ -31,7 +31,8 @@ export default function UploadPage({ onStartAnalysis, onBackToHome }) {
       setRulesFile({
         name: file.name,
         size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-        isCustom: true
+        isCustom: true,
+        rawFile: file
       });
       setIsDemoLoaded(false);
     }
@@ -43,7 +44,8 @@ export default function UploadPage({ onStartAnalysis, onBackToHome }) {
       setReportFile({
         name: file.name,
         size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-        isCustom: true
+        isCustom: true,
+        rawFile: file
       });
       setIsDemoLoaded(false);
     }
@@ -55,7 +57,8 @@ export default function UploadPage({ onStartAnalysis, onBackToHome }) {
       setImageFile({
         name: file.name,
         size: `${(file.size / 1024).toFixed(0)} KB`,
-        isCustom: true
+        isCustom: true,
+        rawFile: file
       });
       const reader = new FileReader();
       reader.onload = () => setImagePreview(reader.result);
@@ -300,7 +303,7 @@ export default function UploadPage({ onStartAnalysis, onBackToHome }) {
       <div className="flex justify-center">
         <button
           disabled={!canAnalyze}
-          onClick={() => onStartAnalysis({ rulesFile, reportFile, imageFile, imagePreview })}
+          onClick={() => onStartAnalysis({ rulesFile, reportFile, imageFile, imagePreview, isDemo: isDemoLoaded })}
           className={`px-10 py-4 rounded-xl font-bold text-sm transition-all flex items-center gap-2 shadow-md ${
             canAnalyze
               ? 'bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white cursor-pointer shadow-indigo-600/25'

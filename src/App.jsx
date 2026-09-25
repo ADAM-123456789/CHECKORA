@@ -15,6 +15,7 @@ import { COMPANY_INFO, INITIAL_REQUIREMENTS } from './data/complianceData';
 export default function App() {
   const [currentView, setCurrentView] = useState('landing');
   const [previousView, setPreviousView] = useState('dashboard');
+  const [companyInfo, setCompanyInfo] = useState(COMPANY_INFO);
   const [requirements, setRequirements] = useState(INITIAL_REQUIREMENTS);
   const [selectedRequirement, setSelectedRequirement] = useState(null);
   const [uploadedData, setUploadedData] = useState(null);
@@ -34,8 +35,14 @@ export default function App() {
     setCurrentView('analyzing');
   };
 
-  // Analysis complete -> redirect to dashboard
-  const handleAnalysisComplete = () => {
+  // Analysis complete -> update requirements & companyInfo from backend
+  const handleAnalysisComplete = (analyzedResult) => {
+    if (analyzedResult?.requirements && analyzedResult.requirements.length > 0) {
+      setRequirements(analyzedResult.requirements);
+    }
+    if (analyzedResult?.companyInfo) {
+      setCompanyInfo(analyzedResult.companyInfo);
+    }
     setCurrentView('dashboard');
   };
 
@@ -80,6 +87,7 @@ export default function App() {
   // Reset demo back to initial state
   const handleResetDemo = () => {
     setRequirements(INITIAL_REQUIREMENTS);
+    setCompanyInfo(COMPANY_INFO);
     setSelectedRequirement(null);
     setCurrentView('dashboard');
   };
@@ -101,7 +109,7 @@ export default function App() {
         currentView={currentView}
         onNavigate={handleNavigate}
         onReset={handleResetDemo}
-        companyName={COMPANY_INFO.name}
+        companyName={companyInfo.name}
       />
 
       {/* Main Content Area */}
@@ -111,7 +119,7 @@ export default function App() {
           <Sidebar 
             currentView={currentView === 'gap-detail' ? previousView : currentView}
             onNavigate={handleNavigate}
-            companyName={COMPANY_INFO.name}
+            companyName={companyInfo.name}
           />
         )}
 
@@ -135,12 +143,13 @@ export default function App() {
           {currentView === 'analyzing' && (
             <AnalysisScreen 
               onComplete={handleAnalysisComplete}
+              uploadedData={uploadedData}
             />
           )}
 
           {currentView === 'dashboard' && (
             <Dashboard 
-              companyInfo={COMPANY_INFO}
+              companyInfo={companyInfo}
               requirements={requirements}
               onSelectRequirement={handleSelectRequirement}
               onNavigate={handleNavigate}
@@ -164,7 +173,10 @@ export default function App() {
           )}
 
           {currentView === 'chat' && (
-            <AiChat />
+            <AiChat 
+              requirements={requirements}
+              companyInfo={companyInfo}
+            />
           )}
 
           {currentView === 'visual-evidence' && (
@@ -173,7 +185,7 @@ export default function App() {
 
           {currentView === 'report' && (
             <ReportView 
-              companyInfo={COMPANY_INFO}
+              companyInfo={companyInfo}
               requirements={requirements}
               onBack={() => handleNavigate('dashboard')}
             />

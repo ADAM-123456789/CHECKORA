@@ -19,12 +19,69 @@ const ANALYSIS_STEPS = [
   { id: 7, label: "Generating corrective actions" }
 ];
 
-export default function AnalysisScreen({ onComplete }) {
+export default function AnalysisScreen({ onComplete, uploadedData }) {
   const [currentStep, setCurrentStep] = useState(0);
   const [isCompleted, setIsCompleted] = useState(false);
+  const [apiData, setApiData] = useState(null);
+  const [backendStatus, setBackendStatus] = useState("connecting"); // "connected" | "fallback"
 
+  // 1. Trigger Backend Analysis Request
   useEffect(() => {
-    // Progress each step every 600ms
+    let isCancelled = false;
+
+    async function runAnalysis() {
+      try {
+        let response;
+        if (uploadedData?.isDemo || (!uploadedData?.rulesFile?.rawFile && !uploadedData?.reportFile?.rawFile)) {
+          // Demo Analysis
+          response = await fetch('http://localhost:8000/api/analyze-demo', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+          });
+        } else {
+          // Custom Upload
+          const formData = new FormData();
+          if (uploadedData?.rulesFile?.rawFile) {
+            formData.append('rules_file', uploadedData.rulesFile.rawFile);
+          }
+          if (uploadedData?.reportFile?.rawFile) {
+            formData.append('report_file', uploadedData.reportFile.rawFile);
+          }
+          if (uploadedData?.imageFile?.rawFile) {
+            formData.append('image_file', uploadedData.imageFile.rawFile);
+          }
+
+          response = await fetch('http://localhost:8000/api/analyze', {
+            method: 'POST',
+            body: formData
+          });
+        }
+
+        if (response && response.ok) {
+          const json = await response.json();
+          if (!isCancelled && json.data) {
+            setApiData(json.data);
+            setBackendStatus("connected");
+          }
+        } else {
+          console.warn("Backend response not ok, using standard compliance data");
+          if (!isCancelled) setBackendStatus("fallback");
+        }
+      } catch (err) {
+        console.warn("Could not reach FastAPI backend, running with standard compliance baseline:", err);
+        if (!isCancelled) setBackendStatus("fallback");
+      }
+    }
+
+    runAnalysis();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [uploadedData]);
+
+  // 2. Step Progress Animation
+  useEffect(() => {
     const interval = setInterval(() => {
       setCurrentStep((prev) => {
         if (prev < ANALYSIS_STEPS.length) {
@@ -35,20 +92,20 @@ export default function AnalysisScreen({ onComplete }) {
           return prev;
         }
       });
-    }, 600);
+    }, 700);
 
     return () => clearInterval(interval);
   }, []);
 
-  // When all steps are done, auto-redirect to dashboard after 1.2 seconds
+  // 3. Complete and Redirect
   useEffect(() => {
     if (isCompleted) {
       const timer = setTimeout(() => {
-        onComplete();
-      }, 1200);
+        onComplete(apiData);
+      }, 1000);
       return () => clearTimeout(timer);
     }
-  }, [isCompleted, onComplete]);
+  }, [isCompleted, apiData, onComplete]);
 
   return (
     <div className="max-w-xl mx-auto px-4 py-16 flex flex-col items-center justify-center min-h-[70vh]">
@@ -58,6 +115,12 @@ export default function AnalysisScreen({ onComplete }) {
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-1 bg-gradient-to-r from-indigo-500 via-blue-500 to-indigo-600 rounded-full" />
 
         <div className="text-center mb-8">
+          {backendStatus === "connected" && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 mb-3 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              FastAPI RAG + Vector DB Active
+            </span>
+          )}
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-indigo-50 text-indigo-600 mb-4 glow-indigo">
             {isCompleted ? (
               <ShieldCheck className="w-9 h-9 text-emerald-600 transition-all scale-110" />

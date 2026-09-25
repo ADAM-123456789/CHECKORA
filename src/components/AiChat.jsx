@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, HelpCircle } from 'lucide-react';
 import { AI_SUGGESTIONS } from '../data/complianceData';
 
-export default function AiChat() {
+export default function AiChat({ requirements = [], companyInfo = {} }) {
   const [messages, setMessages] = useState([
     {
       id: 'welcome',
@@ -24,7 +24,7 @@ export default function AiChat() {
     scrollToBottom();
   }, [messages, isTyping]);
 
-  const handleSendPrompt = (promptText) => {
+  const handleSendPrompt = async (promptText) => {
     if (!promptText.trim()) return;
 
     const userMsg = {
@@ -38,10 +38,31 @@ export default function AiChat() {
     setInputValue('');
     setIsTyping(true);
 
-    setTimeout(() => {
-      let aiResponseText = "";
-      const lower = promptText.toLowerCase();
+    let aiResponseText = "";
+    try {
+      const response = await fetch('http://localhost:8000/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: promptText,
+          requirements: requirements,
+          companyInfo: companyInfo
+        })
+      });
 
+      if (response.ok) {
+        const data = await response.json();
+        if (data.reply) {
+          aiResponseText = data.reply;
+        }
+      }
+    } catch (err) {
+      console.warn("FastAPI chat unavailable, using local intelligence engine:", err);
+    }
+
+    // Fallback if backend didn't provide a reply
+    if (!aiResponseText) {
+      const lower = promptText.toLowerCase();
       const matchedSuggestion = AI_SUGGESTIONS.find(s => 
         lower.includes(s.question.toLowerCase().replace('?', '')) ||
         s.question.toLowerCase().includes(lower.replace('?', ''))
@@ -54,19 +75,19 @@ export default function AiChat() {
       } else if (lower.includes('emergency exit') || lower.includes('exit signage')) {
         aiResponseText = "The regulation requires clearly marked emergency exits, but no supporting evidence was found in the uploaded company report. Because this relates to emergency evacuation and safety, Checkora has classified it as high risk.";
       } else {
-        aiResponseText = "Based on the Industrial Workplace Safety Standard 2026 analysis for Apex Manufacturing Pvt. Ltd., the organization has satisfied 67% of requirements. The 3 critical high-risk gaps are emergency exit signage, fire extinguisher inspection tags, and the annual emergency evacuation drill.";
+        aiResponseText = `Based on the ${companyInfo?.standard || 'Safety Standard 2026'} analysis for ${companyInfo?.name || 'Apex Manufacturing'}, the organization has satisfied ${companyInfo?.complianceScore || 67}% of requirements. The 3 critical high-risk gaps are emergency exit signage, fire extinguisher inspection tags, and the annual emergency evacuation drill.`;
       }
+    }
 
-      const aiMsg = {
-        id: (Date.now() + 1).toString(),
-        sender: 'ai',
-        text: aiResponseText,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
+    const aiMsg = {
+      id: (Date.now() + 1).toString(),
+      sender: 'ai',
+      text: aiResponseText,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
 
-      setMessages(prev => [...prev, aiMsg]);
-      setIsTyping(false);
-    }, 500);
+    setMessages(prev => [...prev, aiMsg]);
+    setIsTyping(false);
   };
 
   return (

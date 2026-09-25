@@ -31,3 +31,11 @@ pnpm-debug.log*
 *.sw?
 .DS_Store
 Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+backend/.env
+backend/__pycache__/
+
